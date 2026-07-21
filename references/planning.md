@@ -254,6 +254,36 @@ conectes a la fuerza. Muestraselos al humano como lista aparte ("N documentos si
 conexion detectada") — es la misma logica que un nodo de codigo con 0 consumidores
 (candidato a revisar, no un error a corregir en silencio, ver Paso 6 y N1-039).
 
+<CRITICAL>
+**Caso especial: relaciones reales pero externas (ej. citas bibliograficas via
+API tipo OpenAlex/Semantic Scholar).** Esto NO es lo mismo que "inferir por
+similitud semantica" (ya prohibido en todo el skill) — la API devuelve una
+relacion que de verdad existe: el paper A cita al paper B de verdad. Pero traerla
+automaticamente igual esta prohibido, por una razon distinta: que una cita exista
+bibliograficamente no dice si esa cita **importa para el argumento** que el
+corpus esta construyendo. Un corpus de investigacion puede citar una fuente para
+darle la razon, para contradecirla, o de pasada en una nota al pie — la API no
+distingue esos tres casos, y solo el humano sabe cual sirve al objetivo del
+documento que se esta escribiendo.
+
+Por eso, si vas a usar una API bibliografica como insumo:
+1. Uso permitido: la API alimenta la PROPUESTA que le llevas al humano, nunca
+   escribe la arista directo. No hay atajo de volumen — si la API devuelve 40
+   citas cruzadas, son 40 decisiones, no una regla generica aplicada a las 40.
+2. La pregunta de nivel 1 (arriba) cambia de forma para este caso — no es
+   "¿aceptas esta regla para todo el corpus?" (una regla no decide relevancia
+   argumental caso por caso), es por relacion encontrada:
+   > "La API dice que `<fuente A>` cita a `<fuente B>` (real, verificable). En
+   > el argumento que estas construyendo, ¿esa cita importa? (si, la uso como
+   > arista / no, es ruido bibliografico / la uso pero con otro sentido: <cual>)"
+3. Nunca escribas el archivo de citas (ej. `citas_intra_corpus.json` o
+   equivalente) completo desde el resultado crudo de la API. Ese archivo se
+   llena con las relaciones que el humano ya confirmo, una por una — es
+   contenido de curacion, no estructura, y aplica la misma regla aditiva que
+   `curation.yaml` (ver SKILL.md, seccion "Por que esto NO se puede automatizar
+   del todo").
+</CRITICAL>
+
 ---
 
 ## 5. ¿Que es ruido?

@@ -191,9 +191,37 @@ como transversal y dejar sus simbolos en otro grupo rompe la exencion por la
 puerta de atras: los edges apuntan al simbolo, no al archivo.
 </IMPORTANT>
 
+<CRITICAL>
+Si el corpus mezcla varios ESPACIOS DE NOMBRES distintos bajo un mismo criterio
+de agrupacion (ej.: unos carriles son categorias de la literatura, otros son
+hallazgos propios, otros son preguntas sin resolver — cualquier caso donde
+"el numero 6" signifique algo distinto segun de que carril se trate), NO
+numeres los carriles en una sola secuencia (`layer_1`...`layer_N`). Un numero
+suelto no dice a que espacio pertenece sin memorizar una tabla externa —
+el mismo problema que tiene usar el ID interno de un hallazgo (`H-6`) como si
+fuera autoexplicativo fuera de su documento de origen.
+
+Usa un prefijo explicito por espacio de nombres en el NOMBRE del carril
+(no en el numero): si un proyecto tiene "huecos de la literatura", "hallazgos
+propios" y "preguntas abiertas", los carriles se llaman con ese prefijo
+legible (el proyecto elige las palabras — no hay una lista fija), nunca solo
+un numero. El humano decide los prefijos en el Paso 1.2, junto con el resto
+del criterio de agrupacion.
+</CRITICAL>
+
 Si activaste `CHECK_LAYER_VIOLATIONS`, corre `python3 build.py` y mira las
 violaciones. Si salen decenas, casi seguro hay infraestructura sin marcar como
 transversal: vuelve al Paso 1.4.
+
+<IMPORTANT>
+Un carril declarado y sin nodos NO es un error a limpiar. Si un grupo se
+queda vacio porque su unico nodo se retiro o dejo de aplicar (ej.: una fuente
+descartada por no cumplir un criterio de calidad del proyecto), dejalo
+declarado en `meta:` con una nota corta de por que esta vacio y desde cuando.
+Un carril vacio con nota es informacion honesta sobre un hueco abierto;
+borrarlo lo esconde. Mismo principio que "el visor dice que no tiene
+introduccion escrita en vez de inventarla" (Paso 1.6) aplicado a carriles.
+</IMPORTANT>
 
 ### Paso 5 - Curar el significado (el grueso)
 

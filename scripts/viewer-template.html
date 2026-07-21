@@ -246,7 +246,13 @@ const LAYERS = (() => {
       const id = +k.split('_')[1];
       // "Nombre - descripcion" -> se parte en el primer guion suelto
       const [name, ...rest] = String(m[k]).split(/\s+-\s+/);
-      return {id, name: `${GRUPO} ${id} · ${name}`, sub: rest.join(' - '),
+      // Si el nombre ya trae su propio prefijo legible (ej. "FIND-31",
+      // "SQ-umbral"), NO anteponer "${GRUPO} ${id}" - duplicaria el
+      // identificador. El prefijo propio gana cuando existe; el numero
+      // generico de layer_N solo se usa si el nombre no trae ninguno.
+      const yaTienePrefijo = /^[A-Za-z]+-/.test(name);
+      const label = yaTienePrefijo ? name : `${GRUPO} ${id} · ${name}`;
+      return {id, name: label, sub: rest.join(' - '),
               color: LAYER_COLORS[i % LAYER_COLORS.length]};
     });
   // El carril 0 siempre existe: lo transversal y lo que no se ha agrupado.

@@ -312,10 +312,39 @@ python3 build.py --extract    # regeneracion limpia desde cero
 
 **7a - Los datos.** Comprueba y reporta:
 - [ ] Curacion huerfana: **0**
-- [ ] Nodos sin descripcion propia: los que sean, dilo con su numero
+- [ ] Nodos sin descripcion propia: **0**, o cada uno con una razon explicita
+      escrita (ver el bloque de abajo — nunca un numero suelto)
 - [ ] Violaciones (si estan activas): ¿señal real o transversal sin marcar?
 - [ ] Aristas descartadas: si el build avisa, ¿por que? Un descarte mudo hace
       que un grafo incompleto parezca completo.
+
+<CRITICAL>
+"Nodos sin descripcion: N, dilo con su numero" NO es un resultado aceptable
+del Paso 7 — es una casilla a medio marcar. Un nodo sin curar no es
+informacion neutral: es trabajo pendiente sin decidir, y "decidir despues"
+en la practica significa que se queda invisible en el visor para siempre.
+
+Para cada nodo sin descripcion propia, hay solo DOS salidas validas — nunca
+una tercera de "se reporta y se deja":
+
+1. **Curarlo.** Es la salida por defecto. Si el nodo tiene contenido legible
+   (codigo, texto, un documento con estructura), leelo y escribe `what`/`why`
+   como el Paso 5 exige — no hay atajo por volumen: 20 nodos sin curar son
+   20 archivos que faltan por leer, no una cifra a reportar y seguir.
+2. **Excluirlo con razon escrita, solo si es un nodo genuinamente
+   INCURABLE** — no "no tuve tiempo", sino que el nodo no tiene contenido
+   que un humano pueda leer y describir (ej.: un binario sin texto extraible,
+   un archivo generado que no representa una decision de nadie). La razon
+   se escribe en `EXCLUDE_RE` o en el propio `curation.yaml`, nunca se omite
+   en silencio.
+
+Si sospechas que muchos nodos "sin curar" son en realidad el MISMO trabajo
+contado dos veces (ej.: un nodo por archivo fuente Y un nodo por su registro
+de metadata, ambos representando la misma unidad), eso no es un problema de
+curacion — es un problema de alcance del Paso 1: dos extracciones solapadas
+del mismo concepto. Resuelvelo ahi (una sola fuente de verdad por concepto),
+no dejando ambos nodos sin curar hasta que "se decida despues".
+</CRITICAL>
 
 **7b - Lo que se VE.** No basta con "el visor abre y el JS no da error".
 

@@ -29,6 +29,21 @@ De ahi la regla que gobierna este skill:
 documentacion: ensucia el grafo con ruido que aparenta conocimiento. Si no has
 leido el archivo, el nodo se queda sin describir. Sin excepciones.
 
+<CRITICAL>
+La misma regla aplica a CUALQUIER atajo, no solo a derivar del nombre. Si te
+encuentras escribiendo un script que genere `what`/`why`/`character` para
+varios nodos a la vez —una plantilla, una heuristica, un LLM aparte sin leer
+cada archivo— es la misma tautologia con mas pasos. Curar 40 nodos toma el
+tiempo de leer 40 archivos. No hay atajo por volumen: si el numero de nodos
+sin curar te tienta a automatizar el contenido, es señal de que hace falta
+mas tiempo de curacion, no una herramienta que la sustituya.
+
+Python (`build.py`) SOLO toca estructura: extraer, calcular grados, detectar
+huerfanas, renderizar. Nunca debe escribir el CONTENIDO de `what`/`why`/
+`character`/`gotchas` — eso sale exclusivamente de que un humano (o el
+agente, leyendo de verdad y con el humano validando) escriba cada campo.
+</CRITICAL>
+
 ## Reparto del trabajo
 
 | Lo hace el script | Lo haces TU leyendo | Lo decide el HUMANO |
@@ -170,6 +185,19 @@ Si salen mas de ~1500 nodos, para y revisa el alcance con el humano: el grafo
 esta cogiendo demasiado y la curacion se hara inviable.
 
 ### Paso 4 - Curar los grupos (rapido, primero)
+
+<CRITICAL>
+Cualquier herramienta o script que toque `curation.yaml` — incluido uno que
+TU mismo escribas para asignar `layer` a muchos archivos de una — debe ser
+ADITIVO: solo puede anadir claves que no existen, nunca reescribir el
+archivo completo ni tocar una clave que ya tiene contenido escrito a mano.
+Comprobado en un corpus real: un script de agrupacion que regeneraba
+`curation.yaml` entero borro tres descripciones de `what`/`why` ya escritas,
+sin aviso, al volver a correrlo tras una re-extraccion. Se recuperaron solo
+porque seguian en el contexto de esa sesion — en otra, se habrian perdido
+sin rastro. La estructura (barata, se regenera en segundos) nunca debe poder
+destruir el significado (caro, irrecuperable si se pierde).
+</CRITICAL>
 
 Antes del significado, asigna `layer` a cada ARCHIVO en `curation.yaml` — el
 numero del grupo que salio del Paso 1.2. Es rapido y da su sitio a cada nodo en

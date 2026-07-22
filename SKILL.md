@@ -160,9 +160,10 @@ codigo da un grafo vacio sin aviso claro. Decidelo con el humano, no lo asumas.
 
 **Paso 2a - modo `code`:**
 ```bash
+command -v python3 >/dev/null || { echo "python3 no esta disponible en el PATH. Instalalo antes de continuar."; exit 1; }
 python3 -c "import graphify" 2>/dev/null || pip install graphifyy -q
+python3 -c "import graphify" 2>/dev/null || { echo "graphify no quedo disponible tras el install. Prueba 'pip install graphifyy --break-system-packages' o un venv, y confirma con 'python3 -c \"import graphify\"' antes de seguir."; exit 1; }
 ```
-Si falla, prueba `pip install graphifyy --break-system-packages` o un venv.
 graphify extrae AST de 25 lenguajes con tree-sitter, en local, sin API key.
 
 **Paso 2b - modo `docs`:** no necesita instalar nada — el extractor de
@@ -265,6 +266,30 @@ no lo decidas tu solo ni lo dejes para descubrirlo a mitad de la curacion.
 
 Por cada archivo del subsistema:
 1. **Leelo entero.** No el nombre, no la firma: el archivo.
+
+<IMPORTANT>
+El "por que" de alta entropia con frecuencia no esta en el archivo actual —
+esta en el historial de por que cambio. Antes de escribir `why`, si el archivo
+tiene historial disponible, revisalo (`git log -p` sobre ese archivo, o el
+mensaje del commit que introdujo la linea sospechosa con `git blame` +
+`git show`). Si el proyecto referencia un ticket, issue o discusion externa
+(un ID de Jira/GitHub en un commit o comentario), sigue esa referencia si esta
+accesible. Esto es una fuente MAS que enriquece la lectura del archivo — nunca
+un sustituto de leerlo, y nunca algo que el humano no vea: si el commit o el
+ticket revela el porque, cita esa fuente en `why` (ej. "ver commit abc123" o
+"resuelto en issue #42"), no lo escribas como si lo hubieras deducido del
+codigo solo.
+
+Respaldo: un caso documentado en la literatura muestra exactamente este patron
+— un candado de sincronizacion cuya razon de ser ("el mainframe bancario
+legado se cae si las peticiones llegan desordenadas") no estaba en ningun
+comentario del codigo, sino en un ticket de Jira ya resuelto (Peng & Wang,
+2026, "Code Digital Twin", Figura 1). El conocimiento tacito —responsabilidad,
+intencion, razones de diseno— vive disperso en el codigo, la configuracion,
+discusiones e historial de versiones, no solo en el archivo que tienes
+delante.
+</IMPORTANT>
+
 2. Escribe `character`: que TIPO de cosa es (singleton, hook, DAO, reducer,
    modulo nativo...). El vocabulario sale del proyecto, no de un catalogo.
 3. Escribe `what`, `why`, `ux`, `when`, `if_broken` (mas los campos propios

@@ -74,13 +74,14 @@ written references — never inferred by semantic similarity.
 ## Structure
 
 ```
-SKILL.md                    # the complete instructions, step by step
-references/
-  planning.md                # detail for Step 1 (planning)
-  curation.md                 # detail for Step 5 (meaning curation)
-scripts/
-  build.py                    # extraction + graph build
-  viewer-template.html        # self-contained HTML viewer template
+skills/code-graph/
+  SKILL.md                    # the complete instructions, step by step
+  references/
+    planning.md                # detail for Step 1 (planning)
+    curation.md                 # detail for Step 5 (meaning curation)
+  scripts/
+    build.py                    # extraction + graph build
+    viewer-template.html        # self-contained HTML viewer template
 ```
 
 ## Usage

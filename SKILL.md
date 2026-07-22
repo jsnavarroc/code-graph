@@ -3,536 +3,535 @@ name: code-graph
 description: Use when someone needs to understand a complex subsystem they didn't write - "how does X work", "what breaks if I change Y", onboarding to unfamiliar code, or mapping a subsystem before refactoring it. Builds a hybrid code graph - AST extracts structure, you read the code and curate meaning - and renders it as a self-contained HTML viewer. Also triggers on "grafo de codigo", "code graph", "mapear el subsistema", "graficar el codigo".
 ---
 
-# Construir un grafo de codigo hibrido
+# Building a hybrid code graph
 
-Un grafo de codigo util NO se genera: se construye. El AST da la estructura
-(quien llama a quien, cuantos dependen), y eso es gratis y fiable. El significado
-—por que existe algo, que se rompe si falla, que race condition esconde— hay que
-leerlo y escribirlo. Este skill hace las dos mitades y las mantiene separadas.
+A useful code graph is NOT generated: it's built. The AST gives you structure
+(who calls whom, how many depend on what), and that's free and reliable. The meaning
+-why something exists, what breaks if it fails, what race condition it hides- has to
+be read and written. This skill does both halves and keeps them separate.
 
-## Por que esto NO se puede automatizar del todo
-
-<CRITICAL>
-Un grafo de solo-estructura puede consumir MAS contexto que no tener grafo.
-Medido en codigo real: un grafo curado usa ~1.000 tokens/consulta contra
-~10.000 sin curar (Codebase-Memory, 31 repos, backend Claude) — 10x. La razon
-es que un nodo con 60 aristas y sin descripcion obliga a abrir 60 archivos.
-Un nodo curado responde en tres lineas.
-
-Lo que ahorra no es el grafo. Es la densidad semantica de sus nodos.
-</CRITICAL>
-
-De ahi la regla que gobierna este skill:
-
-**NUNCA derives una descripcion del nombre del simbolo.** `setIsNavigating` ->
-"escribe is navigating en el estado global" es una tautologia disfrazada de
-documentacion: ensucia el grafo con ruido que aparenta conocimiento. Si no has
-leido el archivo, el nodo se queda sin describir. Sin excepciones.
+## Why this can't be fully automated
 
 <CRITICAL>
-La misma regla aplica a CUALQUIER atajo, no solo a derivar del nombre. Si te
-encuentras escribiendo un script que genere `what`/`why`/`character` para
-varios nodos a la vez —una plantilla, una heuristica, un LLM aparte sin leer
-cada archivo— es la misma tautologia con mas pasos. Curar 40 nodos toma el
-tiempo de leer 40 archivos. No hay atajo por volumen: si el numero de nodos
-sin curar te tienta a automatizar el contenido, es señal de que hace falta
-mas tiempo de curacion, no una herramienta que la sustituya.
+A structure-only graph can consume MORE context than having no graph at all.
+Measured on real code: a curated graph uses ~1,000 tokens/query versus
+~10,000 uncurated (Codebase-Memory, 31 repos, Claude backend) - 10x. The reason
+is that a node with 60 edges and no description forces opening 60 files.
+A curated node answers in three lines.
 
-Python (`build.py`) SOLO toca estructura: extraer, calcular grados, detectar
-huerfanas, renderizar. Nunca debe escribir el CONTENIDO de `what`/`why`/
-`character`/`gotchas` — eso sale exclusivamente de que un humano (o el
-agente, leyendo de verdad y con el humano validando) escriba cada campo.
+What saves context isn't the graph. It's the semantic density of its nodes.
 </CRITICAL>
 
-## Reparto del trabajo
+Hence the rule that governs this skill:
 
-| Lo hace el script | Lo haces TU leyendo | Lo decide el HUMANO |
+**NEVER derive a description from the symbol's name.** `setIsNavigating` ->
+"writes is navigating to global state" is a tautology disguised as
+documentation: it pollutes the graph with noise that looks like knowledge. If you
+haven't read the file, the node stays undescribed. No exceptions.
+
+<CRITICAL>
+The same rule applies to ANY shortcut, not just deriving from the name. If you
+find yourself writing a script that generates `what`/`why`/`character` for
+several nodes at once -a template, a heuristic, a separate LLM without reading
+each file- it's the same tautology with extra steps. Curating 40 nodes takes the
+time of reading 40 files. There's no shortcut by volume: if the number of
+uncurated nodes tempts you to automate the content, that's a signal that
+more curation time is needed, not a tool to replace it.
+
+Python (`build.py`) ONLY touches structure: extracting, computing degrees, detecting
+orphans, rendering. It must never write the CONTENT of `what`/`why`/
+`character`/`gotchas` - that comes exclusively from a human (or the
+agent, actually reading and with the human validating) writing each field.
+</CRITICAL>
+
+## Division of labor
+
+| The script does it | YOU do it by reading | The HUMAN decides it |
 |---|---|---|
-| Extraer AST | Leer cada archivo | Alcance: que entra |
-| Calcular impacto | Escribir what/why/ux | Por que criterio se agrupa |
-| Detectar huerfanos | Detectar duplicacion | Si hay regla de dependencia |
-| Generar el visor | Marcar fallas | Validar que no miente |
+| Extract AST | Read each file | Scope: what's in |
+| Compute impact | Write what/why/ux | What criterion groups things |
+| Detect orphans | Detect duplication | Whether there's a dependency rule |
+| Generate the viewer | Flag defects | Validate it isn't lying |
 
-## Los pasos
+## The steps
 
-Sigue el orden. No es arbitrario: cada decision tardia obliga a rehacer trabajo.
-En el caso que origino este skill, agrupar DESPUES de curar produjo 112 falsos
-positivos que hubo que deshacer.
+Follow the order. It isn't arbitrary: every late decision forces redoing work.
+In the case that originated this skill, grouping AFTER curating produced 112 false
+positives that had to be undone.
 
-Crea un todo por cada paso.
+Create a todo for each step.
 
-### Paso 1 - PLANIFICAR (con el humano, antes de tocar nada)
+### Step 1 - PLAN (with the human, before touching anything)
 
 <IMPORTANT>
-Este paso es el que evita rehacer. No lo saltes ni lo decidas tu solo.
-Lee `references/planning.md` y haz las preguntas al humano (cinco siempre,
-mas una sexta si el modo es `docs` — ver "Corpus sin codigo" mas abajo).
+This step is what prevents redoing work. Don't skip it or decide it alone.
+Read `references/planning.md` and ask the human the questions (five always,
+plus a sixth if the mode is `docs` - see "Corpus without code" below).
 </IMPORTANT>
 
 <CRITICAL>
-NO asumas que el proyecto se organiza en capas de dependencia. Es UNA forma entre
-muchas: Atomic Design, hexagonal, feature-sliced, por dominio, por tipo de
-artefacto, REST/GraphQL/microservicios, codificadores/decodificadores...
+DO NOT assume the project is organized in dependency layers. That's ONE form among
+many: Atomic Design, hexagonal, feature-sliced, by domain, by artifact
+type, REST/GraphQL/microservices, encoders/decoders...
 
-Lee la estructura, CONTRASTA con lo publicado (busca en la web el patron que
-creas ver), SUGIERE, y deja que el humano decida. Un grafo agrupado con un
-criterio inventado miente en cada consulta.
+Read the structure, CONTRAST it with what's published (search the web for the
+pattern you think you see), SUGGEST, and let the human decide. A graph grouped with
+an invented criterion lies on every query.
 </CRITICAL>
 
-Sales de aqui con seis respuestas escritas:
-1. **Subsistema y semillas** - que rutas forman el nucleo
-2. **Agrupacion** - por que criterio se agrupan los nodos (lees, buscas, sugieres)
-3. **Regla de dependencia** - OPCIONAL: solo si hay una direccion que vigilar
-4. **Transversal (grupo 0)** - que usa todo el mundo y no es de ningun grupo
-5. **Ruido** - que se excluye (tests, estilos, generados)
-6. **Introduccion del subsistema** - el parrafo de contexto sin el cual ningun
-   nodo se entiende (ver 1.6 abajo)
+You leave this step with six written answers:
+1. **Subsystem and seeds** - which paths form the core
+2. **Grouping** - what criterion groups the nodes (you read, search, suggest)
+3. **Dependency rule** - OPTIONAL: only if there's a direction to watch
+4. **Cross-cutting (group 0)** - what everyone uses and belongs to no group
+5. **Noise** - what gets excluded (tests, styles, generated files)
+6. **Subsystem introduction** - the context paragraph without which no
+   node can be understood (see 1.6 below)
 
-Sobre (2): **usa la busqueda web**. Tu memoria de arquitecturas tiene huecos y hay
-convenciones que cambiaron. Si ves `app/ pages/ widgets/ entities/`, busca si es
-Feature-Sliced Design antes de inventarte los grupos. Lo local manda sobre lo
-publicado: agrupa lo que HAY, no lo que el patron canonico dice que deberia haber.
+About (2): **use web search**. Your memory of architectures has gaps and there are
+conventions that have changed. If you see `app/ pages/ widgets/ entities/`, search whether it's
+Feature-Sliced Design before inventing the groups yourself. What's local overrides what's
+published: group what's THERE, not what the canonical pattern says should be there.
 
-Sobre (3): agrupar y depender son ejes distintos. Atomic Design agrupa por
-composicion; REST/GraphQL son categorias paralelas. Ahi no hay direccion que
-violar, y `CHECK_LAYER_VIOLATIONS` se queda en False. Sin regla, el grafo sigue
-sirviendo para blast-radius y comprension: simplemente no marca nada en rojo.
+About (3): grouping and depending are different axes. Atomic Design groups by
+composition; REST/GraphQL are parallel categories. There's no direction to
+violate there, and `CHECK_LAYER_VIOLATIONS` stays False. Without a rule, the graph still
+serves blast-radius and comprehension purposes: it just doesn't flag anything in red.
 
-**1.6 - Escribe la introduccion del subsistema (nivel SISTEMA, no nodo).**
+**1.6 - Write the subsystem introduction (SYSTEM level, not node level).**
 
 <IMPORTANT>
-Todo lo anterior (1-5) cura NODOS: que hace cada pieza. Nada de eso responde
-por que existe el subsistema completo ni que se rompe si falla como un todo —
-y ese parrafo es, de todo el grafo, el de mayor densidad semantica: es lo que
-convierte una lista de tarjetas en algo que se entiende de un vistazo. Sin el,
-el visor no tiene nada que mostrar antes de que el humano haga click en un
-nodo (ver `meta.contexto` en el bloque de abajo).
+Everything above (1-5) curates NODES: what each piece does. None of that answers
+why the whole subsystem exists or what breaks if it fails as a whole -
+and that paragraph is, of the entire graph, the one with the highest semantic
+density: it's what turns a list of cards into something understood at a glance. Without it,
+the viewer has nothing to show before the human clicks on a
+node (see `meta.contexto` in the block below).
 
-Respaldo: arquitectura de software en produccion (Larsen & Moghaddam 2026,
-"RAD-AI": el mismo patron de hueco de nivel sistema aparece en tres sistemas
-de organizaciones distintas sin relacion entre si — Uber, Netflix, y sistemas
-propios de los autores — lo que indica que es estructural y no una
-particularidad de un proyecto, no algo que solo le faltara a este caso).
+Backing: production software architecture (Larsen & Moghaddam 2026,
+"RAD-AI": the same system-level gap pattern appears in three
+systems from unrelated organizations - Uber, Netflix, and the authors' own
+systems - which indicates it's structural and not a
+peculiarity of one project, not something only this case was missing).
 </IMPORTANT>
 
-Pregunta al humano con formato cerrado, nunca "escribeme la introduccion"
-abierta:
+Ask the human in closed format, never an open "write me the introduction":
 
-> "Antes de curar el primer nodo, necesito el contexto de sistema. Responde
-> corto, una frase por punto — puedo redactar el parrafo final yo con tus
-> respuestas:
->   a) **Por que existe este subsistema** - que problema del mundo resuelve
->      (ej.: 'sin esto, <quien lo usa> tendria que hacer <la alternativa mala>')
->   b) **El problema que origino esta forma de resolverlo** - si vino de una
->      restriccion, un incidente o una decision de diseno (ej.: 'se construyo
->      asi porque <la restriccion o el caso que fallo antes>')
->   c) **Como se nota cuando funciona / cuando falla** - la señal observable
->      para quien lo usa, no para quien lo programa (ej.: '<el sintoma visible>
->      cuando esto se rompe')
-> Si alguno no aplica, dilo y lo dejo fuera — no hay que forzar los tres."
+> "Before curating the first node, I need the system context. Answer
+> briefly, one sentence per point - I can draft the final paragraph myself with your
+> answers:
+>   a) **Why this subsystem exists** - what real-world problem it solves
+>      (e.g.: 'without this, <who uses it> would have to do <the bad alternative>')
+>   b) **The problem that led to this way of solving it** - if it came from a
+>      constraint, an incident, or a design decision (e.g.: 'it was built
+>      this way because <the constraint or the case that failed before>')
+>   c) **How it's noticeable when it works / when it fails** - the observable
+>      signal for whoever uses it, not for whoever codes it (e.g.: '<the visible symptom>
+>      when this breaks')
+> If any doesn't apply, say so and I'll leave it out - no need to force all three."
 
-Con esas respuestas, escribe en el bloque `meta:` de `curation.yaml`:
+With those answers, write in the `meta:` block of `curation.yaml`:
 ```yaml
 meta:
-  titulo: <nombre corto del subsistema>
-  contexto: <la respuesta a (a), en prosa>
-  problema: <la respuesta a (b), en prosa — omite la clave si no aplica>
-  sintomas: <la respuesta a (c), en prosa — omite la clave si no aplica>
+  titulo: <short subsystem name>
+  contexto: <the answer to (a), in prose>
+  problema: <the answer to (b), in prose - omit the key if not applicable>
+  sintomas: <the answer to (c), in prose - omit the key if not applicable>
 ```
-Si el humano no tiene respuesta todavia, deja el paso abierto y sigue con el
-resto de la planificacion — pero no cierres el subsistema sin volver a esto:
-un grafo sin `meta.contexto` fuerza al visor a decirlo en vez de inventarlo
-(mismo principio que "no derivar la descripcion del nombre" del Paso 5).
+If the human doesn't have an answer yet, leave the step open and continue with the
+rest of the planning - but don't close the subsystem without coming back to this:
+a graph without `meta.contexto` forces the viewer to say so instead of making it up
+(same principle as "don't derive the description from the name" in Step 5).
 
-### Paso 2 - Confirmar el modo y preparar la extraccion
+### Step 2 - Confirm the mode and prepare extraction
 
 <CRITICAL>
-Decide el modo ANTES de seguir. Confirma con
-`find <objetivo> -type f | grep -viE '\.(md|txt|pdf|json|ya?ml|csv)$' | head`:
+Decide the mode BEFORE proceeding. Confirm with
+`find <target> -type f | grep -viE '\.(md|txt|pdf|json|ya?ml|csv)$' | head`:
 
-- Si hay codigo fuente real -> `EXTRACT_MODE = 'code'` (Paso 2a).
-- Si el objetivo es un corpus sin codigo (PDFs, Markdown, JSON de citas) ->
-  `EXTRACT_MODE = 'docs'` (Paso 2b). Ver seccion "Corpus sin codigo" mas abajo.
+- If there's real source code -> `EXTRACT_MODE = 'code'` (Step 2a).
+- If the target is a corpus without code (PDFs, Markdown, citation JSON) ->
+  `EXTRACT_MODE = 'docs'` (Step 2b). See "Corpus without code" section below.
 
-Correr el modo equivocado no falla ruidosamente: `code` sobre un corpus sin
-codigo da un grafo vacio sin aviso claro. Decidelo con el humano, no lo asumas.
+Running the wrong mode doesn't fail loudly: `code` on a corpus without
+code gives an empty graph with no clear warning. Decide it with the human, don't assume it.
 </CRITICAL>
 
-**Paso 2a - modo `code`:**
+**Step 2a - `code` mode:**
 ```bash
-command -v python3 >/dev/null || { echo "python3 no esta disponible en el PATH. Instalalo antes de continuar."; exit 1; }
+command -v python3 >/dev/null || { echo "python3 is not available on PATH. Install it before continuing."; exit 1; }
 python3 -c "import graphify" 2>/dev/null || pip install graphifyy -q
-python3 -c "import graphify" 2>/dev/null || { echo "graphify no quedo disponible tras el install. Prueba 'pip install graphifyy --break-system-packages' o un venv, y confirma con 'python3 -c \"import graphify\"' antes de seguir."; exit 1; }
+python3 -c "import graphify" 2>/dev/null || { echo "graphify did not become available after install. Try 'pip install graphifyy --break-system-packages' or a venv, and confirm with 'python3 -c \"import graphify\"' before continuing."; exit 1; }
 ```
-graphify extrae AST de 25 lenguajes con tree-sitter, en local, sin API key.
+graphify extracts AST for 25 languages with tree-sitter, locally, no API key.
 
-**Paso 2b - modo `docs`:** no necesita instalar nada — el extractor de
-`build.py` no tiene dependencias externas. Solo confirma que el corpus tiene
-referencias explicitas entre documentos (wikilinks, campos de relacion en el
-JSON); si no las tiene, el grafo saldra sin aristas (ver mas abajo).
+**Step 2b - `docs` mode:** doesn't need to install anything - the extractor in
+`build.py` has no external dependencies. Just confirm the corpus has
+explicit references between documents (wikilinks, relation fields in the
+JSON); if it doesn't, the graph will come out with no edges (see below).
 
-### Paso 3 - Configurar y extraer
+### Step 3 - Configure and extract
 
-Copia `scripts/build.py` al proyecto (sugerido: `docs/code-graph/`) y rellena su
-bloque CONFIG con lo que salio del Paso 1. Luego:
+Copy `scripts/build.py` into the project (suggested: `docs/code-graph/`) and fill in its
+CONFIG block with what came out of Step 1. Then:
 
 ```bash
 python3 build.py --extract
 ```
 
-Reporta al humano: cuantos nodos core, cuantos vecinos, cuantos edges.
+Report to the human: how many core nodes, how many neighbors, how many edges.
 
-Si salen mas de ~1500 nodos, para y revisa el alcance con el humano: el grafo
-esta cogiendo demasiado y la curacion se hara inviable.
+If more than ~1500 nodes come out, stop and review the scope with the human: the graph
+is capturing too much and curation will become unviable.
 
-### Paso 4 - Curar los grupos (rapido, primero)
+### Step 4 - Curate the groups (fast, first)
 
 <CRITICAL>
-Cualquier herramienta o script que toque `curation.yaml` — incluido uno que
-TU mismo escribas para asignar `layer` a muchos archivos de una — debe ser
-ADITIVO: solo puede anadir claves que no existen, nunca reescribir el
-archivo completo ni tocar una clave que ya tiene contenido escrito a mano.
-Comprobado en un corpus real: un script de agrupacion que regeneraba
-`curation.yaml` entero borro tres descripciones de `what`/`why` ya escritas,
-sin aviso, al volver a correrlo tras una re-extraccion. Se recuperaron solo
-porque seguian en el contexto de esa sesion — en otra, se habrian perdido
-sin rastro. La estructura (barata, se regenera en segundos) nunca debe poder
-destruir el significado (caro, irrecuperable si se pierde).
+Any tool or script that touches `curation.yaml` - including one that
+YOU write yourself to assign `layer` to many files at once - must be
+ADDITIVE: it can only add keys that don't exist yet, never rewrite the
+whole file or touch a key that already has hand-written content.
+Confirmed on a real corpus: a grouping script that regenerated the entire
+`curation.yaml` erased three already-written `what`/`why` descriptions,
+with no warning, when re-run after a re-extraction. They were recovered only
+because they were still in that session's context - in another session, they would have been lost
+without a trace. Structure (cheap, regenerates in seconds) must never be able to
+destroy meaning (expensive, unrecoverable if lost).
 </CRITICAL>
 
-Antes del significado, asigna `layer` a cada ARCHIVO en `curation.yaml` — el
-numero del grupo que salio del Paso 1.2. Es rapido y da su sitio a cada nodo en
-el visor.
+Before the meaning, assign `layer` to each FILE in `curation.yaml` - the
+group number that came out of Step 1.2. It's fast and gives each node its place in
+the viewer.
 
-Declara tambien los grupos en el bloque `meta:`, que es de donde el visor saca
-los carriles y sus nombres:
+Also declare the groups in the `meta:` block, which is where the viewer draws
+the lanes and their names from:
 
 ```yaml
 meta:
-  layer_1: Atomos - los ladrillos sin dependencias
-  layer_2: Moleculas - composicion de atomos
-  layer_3: Organismos - secciones completas
+  layer_1: Atoms - dependency-free building blocks
+  layer_2: Molecules - composition of atoms
+  layer_3: Organisms - complete sections
 ```
 
 <IMPORTANT>
-Si un archivo es transversal (grupo 0), sus simbolos tambien. Curar el archivo
-como transversal y dejar sus simbolos en otro grupo rompe la exencion por la
-puerta de atras: los edges apuntan al simbolo, no al archivo.
+If a file is cross-cutting (group 0), its symbols are too. Curating the file
+as cross-cutting and leaving its symbols in another group breaks the exemption through the
+back door: edges point to the symbol, not the file.
 </IMPORTANT>
 
 <CRITICAL>
-Si el corpus mezcla varios ESPACIOS DE NOMBRES distintos bajo un mismo criterio
-de agrupacion (ej.: unos carriles son categorias de la literatura, otros son
-hallazgos propios, otros son preguntas sin resolver — cualquier caso donde
-"el numero 6" signifique algo distinto segun de que carril se trate), NO
-numeres los carriles en una sola secuencia (`layer_1`...`layer_N`). Un numero
-suelto no dice a que espacio pertenece sin memorizar una tabla externa —
-el mismo problema que tiene usar el ID interno de un hallazgo (`H-6`) como si
-fuera autoexplicativo fuera de su documento de origen.
+If the corpus mixes several distinct NAMESPACES under the same grouping
+criterion (e.g.: some lanes are literature categories, others are
+your own findings, others are unresolved questions - any case where
+"the number 6" means something different depending on which lane it's in), DO NOT
+number the lanes in a single sequence (`layer_1`...`layer_N`). A loose number
+doesn't say which namespace it belongs to without memorizing an external table -
+the same problem as using an internal finding ID (`H-6`) as if it were
+self-explanatory outside its source document.
 
-Usa un prefijo explicito por espacio de nombres en el NOMBRE del carril
-(no en el numero): si un proyecto tiene "huecos de la literatura", "hallazgos
-propios" y "preguntas abiertas", los carriles se llaman con ese prefijo
-legible (el proyecto elige las palabras — no hay una lista fija), nunca solo
-un numero. El humano decide los prefijos en el Paso 1.2, junto con el resto
-del criterio de agrupacion.
+Use an explicit prefix per namespace in the lane's NAME
+(not in the number): if a project has "literature gaps", "own
+findings", and "open questions", the lanes are named with that
+readable prefix (the project chooses the words - there's no fixed list),
+never just a number. The human decides the prefixes in Step 1.2, along with the rest
+of the grouping criterion.
 </CRITICAL>
 
-Si activaste `CHECK_LAYER_VIOLATIONS`, corre `python3 build.py` y mira las
-violaciones. Si salen decenas, casi seguro hay infraestructura sin marcar como
-transversal: vuelve al Paso 1.4.
+If you enabled `CHECK_LAYER_VIOLATIONS`, run `python3 build.py` and look at the
+violations. If dozens come out, there's almost certainly infrastructure not marked as
+cross-cutting: go back to Step 1.4.
 
 <IMPORTANT>
-Un carril declarado y sin nodos NO es un error a limpiar. Si un grupo se
-queda vacio porque su unico nodo se retiro o dejo de aplicar (ej.: una fuente
-descartada por no cumplir un criterio de calidad del proyecto), dejalo
-declarado en `meta:` con una nota corta de por que esta vacio y desde cuando.
-Un carril vacio con nota es informacion honesta sobre un hueco abierto;
-borrarlo lo esconde. Mismo principio que "el visor dice que no tiene
-introduccion escrita en vez de inventarla" (Paso 1.6) aplicado a carriles.
+A declared lane with no nodes is NOT an error to clean up. If a group ends up
+empty because its only node was removed or stopped applying (e.g.: a source
+discarded for not meeting a project quality criterion), leave it
+declared in `meta:` with a short note on why it's empty and since when.
+An empty lane with a note is honest information about an open gap;
+deleting it hides it. Same principle as "the viewer says it has no
+introduction written instead of making one up" (Step 1.6) applied to lanes.
 </IMPORTANT>
 
-### Paso 5 - Curar el significado (el grueso)
+### Step 5 - Curate the meaning (the bulk of the work)
 
-Lee `references/curation.md` antes de escribir la primera descripcion.
+Read `references/curation.md` before writing the first description.
 
 <IMPORTANT>
-Antes del primer nodo, pregunta al humano si el set de campos por defecto
-(`character`/`what`/`why`/`ux`/`when`/`if_broken`) alcanza o si este proyecto
-necesita alguno propio (cumplimiento, restriccion fisica, dueño del nodo...).
-Ver la pregunta cerrada en `references/curation.md`, seccion "Los campos" —
-no lo decidas tu solo ni lo dejes para descubrirlo a mitad de la curacion.
+Before the first node, ask the human whether the default field set
+(`character`/`what`/`why`/`ux`/`when`/`if_broken`) is enough or whether this project
+needs one of its own (compliance, physical constraint, node owner...).
+See the closed question in `references/curation.md`, "The fields" section -
+don't decide this alone or leave it to be discovered halfway through curation.
 </IMPORTANT>
 
-Por cada archivo del subsistema:
-1. **Leelo entero.** No el nombre, no la firma: el archivo.
+For each file in the subsystem:
+1. **Read it entirely.** Not the name, not the signature: the file.
 
 <IMPORTANT>
-El "por que" de alta entropia con frecuencia no esta en el archivo actual —
-esta en el historial de por que cambio. Antes de escribir `why`, si el archivo
-tiene historial disponible, revisalo (`git log -p` sobre ese archivo, o el
-mensaje del commit que introdujo la linea sospechosa con `git blame` +
-`git show`). Si el proyecto referencia un ticket, issue o discusion externa
-(un ID de Jira/GitHub en un commit o comentario), sigue esa referencia si esta
-accesible. Esto es una fuente MAS que enriquece la lectura del archivo — nunca
-un sustituto de leerlo, y nunca algo que el humano no vea: si el commit o el
-ticket revela el porque, cita esa fuente en `why` (ej. "ver commit abc123" o
-"resuelto en issue #42"), no lo escribas como si lo hubieras deducido del
-codigo solo.
+The high-entropy "why" is frequently not in the current file -
+it's in the history of why it changed. Before writing `why`, if the file
+has history available, review it (`git log -p` on that file, or the
+commit message that introduced the suspicious line via `git blame` +
+`git show`). If the project references a ticket, issue, or external
+discussion (a Jira/GitHub ID in a commit or comment), follow that reference if it's
+accessible. This is ONE MORE source that enriches reading the file - never
+a substitute for reading it, and never something the human doesn't see: if the commit or the
+ticket reveals the why, cite that source in `why` (e.g. "see commit abc123" or
+"resolved in issue #42"), don't write it as if you had deduced it from the
+code alone.
 
-Respaldo: un caso documentado en la literatura muestra exactamente este patron
-— un candado de sincronizacion cuya razon de ser ("el mainframe bancario
-legado se cae si las peticiones llegan desordenadas") no estaba en ningun
-comentario del codigo, sino en un ticket de Jira ya resuelto (Peng & Wang,
-2026, "Code Digital Twin", Figura 1). El conocimiento tacito —responsabilidad,
-intencion, razones de diseno— vive disperso en el codigo, la configuracion,
-discusiones e historial de versiones, no solo en el archivo que tienes
-delante.
+Backing: a case documented in the literature shows exactly this pattern
+- a synchronization lock whose reason for being ("the legacy banking mainframe
+crashes if requests arrive out of order") wasn't in any
+code comment, but in an already-resolved Jira ticket (Peng & Wang,
+2026, "Code Digital Twin", Figure 1). Tacit knowledge -responsibility,
+intent, design reasons- lives scattered across the code, configuration,
+discussions, and version history, not just in the file in front of
+you.
 </IMPORTANT>
 
-2. Escribe `character`: que TIPO de cosa es (singleton, hook, DAO, reducer,
-   modulo nativo...). El vocabulario sale del proyecto, no de un catalogo.
-3. Escribe `what`, `why`, `ux`, `when`, `if_broken` (mas los campos propios
-   del proyecto si el humano definio alguno en el paso anterior).
-4. Decide `collapse` (ver abajo).
-5. Marca `gotchas` cuando el codigo esconda algo no obvio.
-6. Marca `issue` cuando el nodo tenga una falla (ver Paso 6).
+2. Write `character`: what TYPE of thing it is (singleton, hook, DAO, reducer,
+   native module...). The vocabulary comes from the project, not a catalog.
+3. Write `what`, `why`, `ux`, `when`, `if_broken` (plus the project's own
+   fields if the human defined any in the previous step).
+4. Decide `collapse` (see below).
+5. Flag `gotchas` when the code hides something non-obvious.
+6. Flag `issue` when the node has a defect (see Step 6).
 
-**Sobre el colapso archivo + simbolo homonimo:**
+**On collapsing file + homonymous symbol:**
 
 <CRITICAL>
-NO colapses porque los nombres coincidan. Colapsa cuando archivo y simbolo son
-el MISMO CONCEPTO — y eso se decide leyendo que exporta el archivo:
+DO NOT collapse just because the names match. Collapse when the file and the symbol are
+the SAME CONCEPT - and that's decided by reading what the file exports:
 
-  UN caracter  -> colapsa. Un archivo que exporta una sola entidad principal
-                  (una funcion, una clase): el archivo ES esa entidad. Dos
-                  nodos serian el mismo concepto duplicado.
-  DOS o mas    -> NO colapses. Un archivo que exporta, por ejemplo, una clase
-                  singleton Y una funcion independiente con consumidores casi
-                  disjuntos: fusionarlos junta dos APIs que se usan por separado.
+  ONE character  -> collapse. A file exporting a single main entity
+                  (a function, a class): the file IS that entity. Two
+                  nodes would be the same concept duplicated.
+  TWO or more    -> DO NOT collapse. A file that exports, for example, a singleton
+                  class AND an independent function with almost disjoint consumers:
+                  merging them joins two APIs used separately.
 
-La pista fiable: ¿el homonimo es el `export default` del archivo? Si lo es,
-colapsa. Si el archivo exporta varias cosas de igual rango, son nodos distintos.
+The reliable clue: is the homonym the file's `export default`? If it is,
+collapse. If the file exports several things of equal standing, they're distinct nodes.
 </CRITICAL>
 
-Al colapsar, los grados se FUSIONAN. En el caso original el impacto estaba
-partido en dos —quien importaba el modulo contaba en un nodo, quien llamaba a la
-funcion en otro— y ninguno de los dos numeros era el real: 60 + 30 = 90.
+When collapsing, the degrees get MERGED. In the original case the impact was
+split in two -whoever imported the module counted on one node, whoever called the
+function on another- and neither of the two numbers was the real one: 60 + 30 = 90.
 
-**Valida por bloques.** Cada 15-20 archivos, corre el build y ensena al humano
-2-3 descripciones. Pregunta si el nivel es el correcto. Es barato corregir el
-criterio en el archivo 20 y carisimo en el 200.
+**Validate in batches.** Every 15-20 files, run the build and show the human
+2-3 descriptions. Ask if the level is right. It's cheap to correct the
+criterion at file 20 and very expensive at file 200.
 
-Tras cada bloque:
+After each batch:
 ```bash
 python3 build.py
 ```
-Si avisa de **curacion huerfana**, una clave apunta a codigo que no existe:
-corrigela ANTES de seguir. Ese aviso es lo que impide que el grafo mienta.
+If it warns about **orphaned curation**, a key points to code that doesn't exist:
+fix it BEFORE continuing. That warning is what keeps the graph from lying.
 
-### Paso 6 - Marcar fallas (a mano, nodo a nodo)
+### Step 6 - Flag defects (by hand, node by node)
 
 <CRITICAL>
-La bandera `issue` la pones TU leyendo el nodo. NUNCA la deduzcas buscando una
-palabra clave en el texto: el dia que alguien escriba un gotcha con otras
-palabras, el nodo desaparece del filtro y nadie se entera.
+YOU set the `issue` flag by reading the node. NEVER deduce it by searching for a
+keyword in the text: the day someone writes a gotcha with different
+words, the node disappears from the filter and nobody notices.
 </CRITICAL>
 
-Tres tipos:
-- `bug` - esta mal y se nota
-- `muerto` - escrito pero nunca corre (comentado, stub, no llamado)
-- `duplicado` - la misma logica repetida en varios sitios
+Three types:
+- `bug` - it's wrong and it's noticeable
+- `dead` - written but never runs (commented out, stub, never called)
+- `duplicate` - the same logic repeated in several places
 
-**Para `muerto`, empieza por los candidatos que ya calculo el build**, no por
-los 900 nodos a ciegas. `python3 build.py` reporta los simbolos con 0
-consumidores en TODO el grafo (no solo el subsistema) — es la misma señal de
-alcanzabilidad que la deteccion automatica de codigo muerto usa en la
-literatura, con 87.9% de acierto combinando analisis estatico+dinamico
-(Malavolta et al., 2023, "Lacuna", IEEE TSE). No decide por ti: 17.5% de esos
-candidatos son falsos positivos reales (exports publicos, entry points) —
-tu confirmas cada uno, la lista solo reduce donde mirar primero.
+**For `dead`, start from the candidates the build already computed**, not
+900 nodes blindly. `python3 build.py` reports symbols with 0
+consumers across the ENTIRE graph (not just the subsystem) - it's the same
+reachability signal automatic dead code detection uses in the
+literature, with 87.9% accuracy combining static+dynamic analysis
+(Malavolta et al., 2023, "Lacuna", IEEE TSE). It doesn't decide for you: 17.5% of those
+candidates are real false positives (public exports, entry points) -
+you confirm each one, the list just narrows down where to look first.
 
-Para los duplicados, busca patrones de verdad antes de marcar:
+For duplicates, actually search for patterns before flagging:
 ```bash
-grep -rn "<el patron sospechoso>" src/ --include="*.js" | grep -v test
+grep -rn "<the suspicious pattern>" src/ --include="*.js" | grep -v test
 ```
 
-### Paso 7 - Verificar y entregar
+### Step 7 - Verify and ship
 
 ```bash
-python3 build.py --extract    # regeneracion limpia desde cero
+python3 build.py --extract    # clean regeneration from scratch
 ```
 
-**7a - Los datos.** Comprueba y reporta:
-- [ ] Curacion huerfana: **0**
-- [ ] Nodos sin descripcion propia: **0** al cerrar el Paso 7 (ver el bloque
-      de abajo — nunca un numero suelto que se reporta y se deja)
-- [ ] Violaciones (si estan activas): ¿señal real o transversal sin marcar?
-- [ ] Aristas descartadas: si el build avisa, ¿por que? Un descarte mudo hace
-      que un grafo incompleto parezca completo.
+**7a - The data.** Check and report:
+- [ ] Orphaned curation: **0**
+- [ ] Nodes with no description of their own: **0** by the time Step 7 closes (see the
+      block below - never a loose number that gets reported and left as is)
+- [ ] Violations (if enabled): real signal or unmarked cross-cutting?
+- [ ] Dropped edges: if the build warns, why? A silent drop makes an
+      incomplete graph look complete.
 
 <CRITICAL>
-"Nodos sin descripcion: N, dilo con su numero" NO es un resultado aceptable
-del Paso 7 — es una casilla a medio marcar. Un nodo sin curar no es
-informacion neutral: es trabajo pendiente sin decidir, y "decidir despues"
-en la practica significa que se queda invisible en el visor para siempre.
+"Nodes without description: N, just report the number" is NOT an acceptable
+outcome of Step 7 - it's a half-checked box. An uncurated node isn't
+neutral information: it's pending work that hasn't been decided, and "decide later"
+in practice means it stays invisible in the viewer forever.
 
-TU no decides que un nodo es "incurable" y lo excluyes por tu cuenta — eso
-es alcance, y el alcance lo decide el humano (Paso 1), no una heuristica
-sobre la marcha. Para cada nodo sin descripcion propia:
+YOU don't decide a node is "uncurable" and exclude it on your own - that's
+scope, and scope is decided by the human (Step 1), not a heuristic
+on the fly. For each node without its own description:
 
-1. **Curarlo es la salida por defecto.** Si el nodo tiene contenido legible
-   (codigo, texto, un documento con estructura), leelo y escribe `what`/`why`
-   como el Paso 5 exige — no hay atajo por volumen: 20 nodos sin curar son
-   20 archivos que faltan por leer, no una cifra a reportar y seguir.
-2. **Si dudas si un nodo es curable, o son muchos nodos del mismo tipo,
-   pregunta al humano — nunca decidas solo.** Formato cerrado, con lo que
-   ya sabes del nodo:
-   > "Encontre N nodos de tipo <X> sin curar (ej.: <2-3 ejemplos reales>).
-   > ¿Los curamos uno por uno, los excluimos con una razon (dime cual), o
-   > son el mismo concepto que otro nodo ya curado y hay que fusionarlos?"
-   La respuesta del humano —curar, excluir con razon, o fusionar— es la que
-   se aplica. Ninguna de las tres se asume por defecto.
+1. **Curating it is the default path.** If the node has readable content
+   (code, text, a structured document), read it and write `what`/`why`
+   as Step 5 requires - there's no shortcut by volume: 20 uncurated nodes are
+   20 files that need reading, not a figure to report and move on.
+2. **If you're unsure whether a node is curable, or there are many nodes of the same type,
+   ask the human - never decide alone.** Closed format, with what you
+   already know about the node:
+   > "I found N nodes of type <X> uncurated (e.g.: <2-3 real examples>).
+   > Should we curate them one by one, exclude them with a reason (tell me which),
+   > or are they the same concept as an already-curated node and need to be merged?"
+   The human's answer -curate, exclude with a reason, or merge- is what
+   gets applied. None of the three is assumed by default.
 
-Si sospechas que muchos nodos "sin curar" son en realidad el MISMO trabajo
-contado dos veces (ej.: un nodo por archivo fuente Y un nodo por su registro
-de metadata, ambos representando la misma unidad), dilo en la pregunta de
-arriba como una de las opciones — es un problema de alcance del Paso 1, no
-algo que se resuelve dejando ambos nodos sin curar hasta "decidir despues".
+If you suspect many "uncurated" nodes are actually the SAME work
+counted twice (e.g.: one node per source file AND one node per its metadata
+record, both representing the same unit), say so in the question
+above as one of the options - it's a Step 1 scoping problem, not
+something solved by leaving both nodes uncurated until "deciding later."
 </CRITICAL>
 
-**7b - Lo que se VE.** No basta con "el visor abre y el JS no da error".
+**7b - What's SEEN.** It's not enough that "the viewer opens and the JS throws no error."
 
 <CRITICAL>
-Ese check pasa aunque el visor este roto. Comprobado: en un corpus real paso
-limpio mientras el panel mostraba la narrativa de OTRO proyecto, faltaban 10
-de 18 carriles, y los iconos de la leyenda se estiraban hasta tapar su texto.
-Ninguna verificacion de datos caza un fallo de presentacion.
+That check passes even if the viewer is broken. Confirmed: on a real corpus it
+passed clean while the panel showed the narrative of ANOTHER project, was missing 10
+of 18 lanes, and the legend icons stretched until they covered their own text.
+No data verification catches a presentation failure.
 </CRITICAL>
 
-Abre el visor de verdad y recorre CADA superficie que renderiza texto o
-iconos — leyenda, panel de introduccion, rotulos de carril, tarjeta de nodo:
+Actually open the viewer and go through EVERY surface that renders text or
+icons - legend, introduction panel, lane labels, node card:
 
-- [ ] **Nada del dominio esta escrito en la plantilla.** Todo rotulo visible
-      sale de `meta:`. Si lees una palabra que pertenece a OTRO proyecto (o al
-      caso que origino la plantilla), es un texto fosilizado: sacalo a `meta`.
-- [ ] **El vocabulario es el de ESTE proyecto.** Si agrupaste por dominio, el
-      visor no puede decir "capa". Sale de `meta.grupo_label`.
-- [ ] **Carriles declarados == carriles dibujados.** Cuentalos. Un filtro
-      demasiado estrecho los tira en silencio y sus nodos quedan sin sitio.
-- [ ] **Solo se muestra lo que este grafo usa.** Sin regla de dependencia, la
-      leyenda no debe ofrecer "violacion"; sin fallas marcadas, no debe
-      listarlas.
-- [ ] **Ningun selector CSS de elemento suelto** (`svg{}`, `div{}`, `circle{}`).
-      Una regla global pensada para el lienzo alcanza tambien a los iconos
-      inline y los deforma — y el CSS gana a los atributos `width`/`height`.
-      Acotalos con id o clase.
-- [ ] **Nada se sale de su caja** con los textos reales del proyecto, que son
-      mas largos que los del ejemplo.
+- [ ] **Nothing domain-specific is hardcoded in the template.** Every visible label
+      comes from `meta:`. If you read a word that belongs to ANOTHER project (or to
+      the case that originated the template), it's fossilized text: move it to `meta`.
+- [ ] **The vocabulary is THIS project's.** If you grouped by domain, the
+      viewer can't say "layer." It comes from `meta.grupo_label`.
+- [ ] **Declared lanes == drawn lanes.** Count them. A filter
+      that's too narrow silently drops them and their nodes are left with no place.
+- [ ] **Only what this graph actually uses is shown.** Without a dependency rule, the
+      legend must not offer "violation"; without flagged defects, it must not
+      list them.
+- [ ] **No loose element-level CSS selector** (`svg{}`, `div{}`, `circle{}`).
+      A global rule meant for the canvas also reaches
+      inline icons and deforms them - and CSS wins over `width`/`height` attributes.
+      Scope them with an id or class.
+- [ ] **Nothing overflows its box** with the project's real text, which is
+      longer than the example's.
 
-Arregla en la PLANTILLA, no en el `index.html` generado: el build lo pisa.
+Fix it in the TEMPLATE, not in the generated `index.html`: the build overwrites it.
 
-**7c - El humano.** Abre el visor y pasa la pelota: **el resultado lo valida el.**
-Preguntale por lo que ve, no por los numeros. En el caso que origino este
-apartado, los tres fallos visuales los encontro el humano mirando la pantalla,
-despues de que toda la verificacion automatica saliera en verde.
+**7c - The human.** Open the viewer and pass the ball: **the human validates the result.**
+Ask them about what they see, not about the numbers. In the case that originated this
+section, all three visual failures were found by the human looking at the
+screen, after all automated verification came back green.
 
-### Paso 8 - Mantener: re-verificar antes de cerrar la sesion (si paso tiempo o hubo cambios)
+### Step 8 - Maintain: re-verify before closing the session (if time passed or there were changes)
 
 <IMPORTANT>
-El grafo no se corrompe por edad: se corrompe porque el codigo debajo de el
-sigue moviendose mientras curas. Un estudio sobre 1000 repositorios de GitHub
-encontro que mas de una cuarta parte (28.9%) tenia documentacion con al menos
-una referencia a codigo que ya no existia — y el patron confirmado es que el
-mismo commit que cambia el codigo es el que deja la documentacion mintiendo,
-sin ningun aviso hasta que algo la revisa explicitamente (Tan, Wagner & Treude,
-2023, "Wait, wasn't that code here before?"). El Paso 7 verifica el grafo
-recien construido; este paso verifica el mismo grafo despues de que paso
-tiempo real — varias iteraciones de curacion, o cualquier cambio de codigo
-en paralelo.
+The graph doesn't decay with age: it decays because the code underneath
+keeps moving while you curate. A study of 1000 GitHub repositories
+found that more than a quarter (28.9%) had documentation with at least
+one reference to code that no longer existed - and the confirmed pattern is that the
+same commit that changes the code is the one that leaves the documentation lying,
+with no warning until something explicitly reviews it (Tan, Wagner & Treude,
+2023, "Wait, wasn't that code here before?"). Step 7 verifies the graph
+just built; this step verifies the same graph after real time has
+passed - several curation iterations, or any code change
+in parallel.
 </IMPORTANT>
 
-**Antes de cerrar la sesion de curacion** (no tras cada archivo — al final del
-bloque de trabajo, igual que el Paso 5 valida por lotes de 15-20):
+**Before closing the curation session** (not after each file - at the end of the
+work batch, same as Step 5 validates in batches of 15-20):
 
 ```bash
-python3 build.py --extract    # vuelve a leer el codigo real, no lo cacheado
+python3 build.py --extract    # re-reads the real code, not the cache
 ```
 
-- [ ] **Curacion huerfana sigue en 0.** Si subio desde el ultimo Paso 7, algo
-      del codigo cambio bajo un nodo ya curado — no es un bug nuevo del build,
-      es la senal de que toca revisar esos nodos, no solo silenciar el aviso.
-- [ ] **Si trabajaste en la MISMA sesion en la que tocaste codigo del
-      subsistema graficado**, corre esto ANTES de dar la curacion por cerrada,
-      no en la siguiente sesion — es el punto de intervencion mas barato,
-      igual que el aviso de DOCER llega en el propio pull request y no despues
-      de fusionarlo.
-- [ ] **Si el humano no va a volver pronto**, dejalo dicho en el propio
-      `curation.yaml` o en el resumen de cierre: que subsistema quedo curado y
-      contra que commit — para que la proxima sesion sepa si hace falta repetir
-      este paso antes de confiar en el grafo.
+- [ ] **Orphaned curation is still 0.** If it went up since the last Step 7, something
+      in the code changed under an already-curated node - it's not a new build bug,
+      it's the signal that those nodes need review, not just silencing the warning.
+- [ ] **If you worked in the SAME session where you touched code from the
+      graphed subsystem**, run this BEFORE calling the curation done,
+      not in the next session - it's the cheapest intervention point,
+      same as the DOCER warning arrives in the pull request itself and not
+      after merging it.
+- [ ] **If the human isn't coming back soon**, leave it noted in
+      `curation.yaml` itself or in the closing summary: which subsystem was curated and
+      against which commit - so the next session knows whether it needs to repeat
+      this step before trusting the graph.
 
-Este paso no sustituye al Paso 7: 7 verifica que el grafo nuevo es correcto;
-8 verifica que un grafo que ya diste por bueno sigue siendolo.
+This step doesn't replace Step 7: 7 verifies the new graph is correct;
+8 verifies that a graph you already signed off on still is.
 
-## Errores que este skill existe para evitar
+## Errors this skill exists to prevent
 
-Todos ocurrieron de verdad construyendo el grafo que lo origino:
+All of these actually happened while building the graph that originated it:
 
-| Error | Que produjo | El paso que lo evita |
+| Error | What it produced | The step that prevents it |
 |---|---|---|
-| Derivar descripciones del nombre | Tautologias con apariencia de doc | Paso 5.1 |
-| Infraestructura marcada como grupo | 112 falsos positivos de 112 | Paso 1.4 |
-| Claves de curacion inventadas | ~15 nodos apuntando a nada | El aviso de huerfana |
-| Contar herencia como descripcion | 100% reportado con 547 huecos | Paso 7 |
-| Detectar fallas por palabra clave | Nodos que salen del filtro en silencio | Paso 6 |
-| Curar antes de agrupar | Rehacer las violaciones enteras | El orden de los pasos |
-| Asumir capas donde hay composicion | Alarmas que no significan nada | Paso 1.2 y 1.3 |
-| Texto del dominio dentro de la plantilla | El visor de un proyecto contaba la historia de otro proyecto distinto | Paso 7b |
-| Verificar solo datos, nunca lo que se ve | Tres fallos visuales con toda la verificacion en verde | Paso 7b |
-| Un selector CSS de elemento sin acotar | Los iconos de la leyenda tapando su propio texto | Paso 7b |
-| Dar el grafo por bueno y no volver a mirarlo aunque el codigo siguiera cambiando | Curacion que mentia en silencio sin que ningun aviso lo marcara | Paso 8 |
+| Deriving descriptions from the name | Tautologies masquerading as docs | Step 5.1 |
+| Infrastructure marked as a group | 112 false positives out of 112 | Step 1.4 |
+| Invented curation keys | ~15 nodes pointing at nothing | The orphan warning |
+| Counting inheritance as description | 100% reported with 547 gaps | Step 7 |
+| Detecting defects by keyword | Nodes silently falling out of the filter | Step 6 |
+| Curating before grouping | Redoing all the violations | The order of the steps |
+| Assuming layers where there's composition | Alarms that mean nothing | Step 1.2 and 1.3 |
+| Domain text baked into the template | One project's viewer telling another project's story | Step 7b |
+| Verifying only data, never what's rendered | Three visual failures with all verification green | Step 7b |
+| An unscoped element-level CSS selector | Legend icons covering their own text | Step 7b |
+| Declaring the graph good and never looking again even as the code kept changing | Curation silently lying with no warning flagging it | Step 8 |
 
-## Corpus sin codigo (PDFs, Markdown, JSON de investigacion)
+## Corpus without code (PDFs, Markdown, research JSON)
 
 <IMPORTANT>
-El principio del skill (estructura automatizable + significado leido a mano)
-es agnostico al tipo de producto. La capa de extraccion NO — un PDF no tiene
-AST. Para corpus sin codigo fuente, `build.py` tiene un segundo modo:
-`EXTRACT_MODE = 'docs'` en vez de `'code'`.
+The skill's principle (automatable structure + hand-read meaning)
+is agnostic to the product type. The extraction layer isn't - a PDF has no
+AST. For corpora without source code, `build.py` has a second mode:
+`EXTRACT_MODE = 'docs'` instead of `'code'`.
 </IMPORTANT>
 
-En modo `docs`, la extraccion sale de referencias YA ESCRITAS en el corpus,
-nunca inferidas por similitud semantica (inferir seria alucinar relaciones —
-la misma razon por la que el Paso 5 prohibe derivar del nombre):
+In `docs` mode, extraction comes from references ALREADY WRITTEN in the corpus,
+never inferred by semantic similarity (inferring would mean hallucinating relations -
+the same reason Step 5 forbids deriving from the name):
 
-- **Markdown**: nodo por archivo (+ nodo por heading `##` si hay varios).
-  Arista por wikilink `[[id]]` o link relativo `[texto](otro.md)`.
-- **JSON de registro** (ej. una lista de fuentes/citas con `id`): nodo por
-  entrada. Arista por el primer campo de lista que declare una relacion
+- **Markdown**: one node per file (+ one node per `##` heading if there are several).
+  One edge per wikilink `[[id]]` or relative link `[text](other.md)`.
+- **Registry JSON** (e.g. a list of sources/citations with `id`): one node per
+  entry. One edge per the first list field that declares a relation
   (`relevancia_hueco`, `relacionado_con`, `cita_a`, `refs`).
-- **PDF**: nodo por archivo, sin estructura interna — es un nodo hoja para
-  curar (`what`/`why`) igual que cualquier simbolo sin AST propio.
+- **PDF**: one node per file, no internal structure - it's a leaf node to
+  curate (`what`/`why`) just like any symbol with no AST of its own.
 
-Si el corpus no tiene referencias explicitas entre documentos, el grafo sale
-con nodos sueltos y cero aristas: sigue sirviendo para CURAR (una tarjeta por
-documento) pero no da blast-radius. Eso es correcto, no un bug — no hay nada
-que inferir sin alucinar.
+If the corpus has no explicit references between documents, the graph comes out
+with disconnected nodes and zero edges: it still works for CURATION (one card per
+document) but doesn't give you blast-radius. That's correct, not a bug - there's nothing
+to infer without hallucinating.
 
-Los pasos 4-7 (curar, marcar fallas, verificar) no cambian: `curation.yaml`
-sigue funcionando igual, solo que la clave es `archivo.pdf` o
-`registro.json::N2-047` en vez de `archivo.js::simbolo`.
+Steps 4-7 (curate, flag defects, verify) don't change: `curation.yaml`
+still works the same way, just the key is `file.pdf` or
+`record.json::N2-047` instead of `file.js::symbol`.
 
-## Que NO cubre este skill
+## What this skill does NOT cover
 
-- **Repos enteros.** Esta probado en subsistemas (~900 nodos de 3.500). Un
-  monorepo completo es otro problema y no esta resuelto.
-- **Mantener el grafo vivo.** Regenera la estructura, pero si el codigo (o el
-  corpus) cambia, la curacion hay que revisarla a mano. El aviso de huerfana
-  ayuda, no resuelve.
-- **Imports dinamicos.** `require(variable)` o `import()` en runtime no los ve
-  el AST. Si sospechas dispatch dinamico, verifica a mano.
-- **Relaciones inferidas por significado, en cualquier modo.** Ni en `code`
-  (el AST no adivina un import dinamico) ni en `docs` (el extractor no adivina
-  que dos papers "se parecen" sin un link explicito). Si la relacion no esta
-  escrita, no se dibuja — se cura a mano o se deja sin conectar.
+- **Entire repos.** This is proven on subsystems (~900 nodes out of 3,500). A
+  full monorepo is a different problem and isn't solved yet.
+- **Keeping the graph alive.** It regenerates the structure, but if the code (or the
+  corpus) changes, the curation has to be reviewed by hand. The orphan warning
+  helps, it doesn't solve it.
+- **Dynamic imports.** `require(variable)` or runtime `import()` aren't seen
+  by the AST. If you suspect dynamic dispatch, verify by hand.
+- **Relations inferred by meaning, in any mode.** Neither in `code`
+  (the AST doesn't guess a dynamic import) nor in `docs` (the extractor doesn't guess
+  that two papers "are similar" without an explicit link). If the relation isn't
+  written, it isn't drawn - it's curated by hand or left unconnected.

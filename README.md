@@ -1,92 +1,100 @@
 # code-graph
 
-Skill de Claude para construir un **grafo de código híbrido**: la estructura
-(quién llama a quién, cuántos dependen) sale del AST de forma automática y
-fiable; el significado (por qué existe algo, qué se rompe si falla, qué race
-condition esconde) lo lee y escribe un humano. El skill hace las dos mitades
-y las mantiene separadas — nunca deja que una se haga pasar por la otra.
+A Claude skill for building a **hybrid code graph**: structure
+(who calls whom, how many depend on what) comes from the AST automatically and
+reliably; meaning (why something exists, what breaks if it fails, what race
+condition it hides) is read and written by a human. The skill does both halves
+and keeps them separate — it never lets one pass for the other.
 
-## Por qué
+## Why
 
-Un grafo de solo-estructura puede consumir **más** contexto que no tener
-grafo: un nodo con 60 aristas y sin descripción obliga a abrir 60 archivos
-para entenderlo. Medido en código real, un grafo curado usa ~1.000
-tokens/consulta contra ~10.000 sin curar — 10x. Lo que ahorra contexto no es
-el grafo en sí, es la densidad semántica de sus nodos.
+A structure-only graph can consume **more** context than having no
+graph at all: a node with 60 edges and no description forces opening 60 files
+to understand it. Measured on real code, a curated graph uses ~1,000
+tokens/query versus ~10,000 uncurated — 10x. What saves context isn't
+the graph itself, it's the semantic density of its nodes.
 
-De ahí la regla que gobierna todo el skill: **nunca derivar una descripción
-del nombre del símbolo**. Si no se ha leído el archivo, el nodo se queda sin
-describir. Sin excepciones.
+Hence the rule that governs the whole skill: **never derive a description
+from the symbol's name**. If the file hasn't been read, the node stays
+undescribed. No exceptions.
 
-## Qué hace
+## What it does
 
-| Lo hace el script | Lo hace el agente leyendo | Lo decide el humano |
+| The script does it | The agent does it by reading | The human decides it |
 |---|---|---|
-| Extraer AST | Leer cada archivo | Alcance: qué entra |
-| Calcular impacto | Escribir `what`/`why`/`ux` | Por qué criterio se agrupa |
-| Detectar huérfanos | Detectar duplicación | Si hay regla de dependencia |
-| Generar el visor | Marcar fallas | Validar que no miente |
+| Extract AST | Read each file | Scope: what's in |
+| Compute impact | Write `what`/`why`/`ux` | What criterion groups things |
+| Detect orphans | Detect duplication | Whether there's a dependency rule |
+| Generate the viewer | Flag defects | Validate it isn't lying |
 
-El resultado es un visor HTML autocontenido: tarjetas de nodo con
-`character`/`what`/`why`/`ux`/`when`/`if_broken`, agrupadas en carriles según
-el criterio de organización real del proyecto (no asume capas de dependencia
-— puede ser Atomic Design, feature-sliced, por dominio, lo que corresponda),
-con blast-radius calculado sobre el grafo completo.
+The result is a self-contained HTML viewer: node cards with
+`character`/`what`/`why`/`ux`/`when`/`if_broken`, grouped into lanes according to
+the project's real organization criterion (it doesn't assume dependency layers
+— it can be Atomic Design, feature-sliced, by domain, whatever fits),
+with blast-radius computed over the full graph.
 
-## Los 8 pasos
+## The 8 steps
 
-1. **Planificar** con el humano — alcance, agrupación, regla de dependencia
-   (opcional), transversal, ruido a excluir, e introducción del subsistema.
-2. **Confirmar el modo** — `code` (hay AST vía tree-sitter) o `docs` (corpus
-   sin código: Markdown, JSON de registro, PDF).
-3. **Configurar y extraer** — corre `build.py --extract`.
-4. **Curar los grupos** — asigna `layer` a cada archivo, rápido, antes del
-   significado.
-5. **Curar el significado** — el grueso: leer cada archivo entero y escribir
-   sus campos. Se valida por bloques de 15-20 archivos.
-6. **Marcar fallas** — `bug` / `muerto` / `duplicado`, a mano, nunca por
-   palabra clave.
-7. **Verificar** — los datos (curación huérfana, cobertura, violaciones) y lo
-   que se VE (nada hardcodeado, carriles completos, CSS acotado).
-8. **Mantener** — al cerrar la sesión, re-verificar que el código no se movió
-   bajo nodos ya curados.
+1. **Plan** with the human — scope, grouping, dependency rule
+   (optional), cross-cutting, noise to exclude, and subsystem introduction.
+2. **Confirm the mode** — `code` (there's an AST via tree-sitter) or `docs` (corpus
+   without code: Markdown, registry JSON, PDF).
+3. **Configure and extract** — run `build.py --extract`.
+4. **Curate the groups** — assign `layer` to each file, fast, before the
+   meaning.
+5. **Curate the meaning** — the bulk of it: read every file whole and write
+   its fields. Validated in batches of 15-20 files.
+6. **Flag defects** — `bug` / `dead` / `duplicate`, by hand, never by
+   keyword.
+7. **Verify** — the data (orphaned curation, coverage, violations) and what's
+   SEEN (nothing hardcoded, complete lanes, scoped CSS).
+8. **Maintain** — when closing the session, re-verify the code didn't move
+   under already-curated nodes.
 
-Cada paso existe porque un error real lo motivó — la lista completa está en
-`SKILL.md`, sección "Errores que este skill existe para evitar".
+Each step exists because a real error motivated it — the full list is in
+`SKILL.md`, "Errors this skill exists to prevent" section.
 
-## Modo `docs`
+## `docs` mode
 
-El principio (estructura automatizable + significado leído a mano) es
-agnóstico al tipo de producto. Para corpus sin código fuente (una carpeta de
-investigación, un registro de citas), `build.py` extrae nodos de Markdown,
-JSON de registro o PDFs, y aristas solo de referencias ya escritas
-explícitamente — nunca inferidas por similitud semántica.
+The principle (automatable structure + hand-read meaning) is
+agnostic to the product type. For corpora without source code (a
+research folder, a citation registry), `build.py` extracts nodes from Markdown,
+registry JSON, or PDFs, and edges only from already explicitly
+written references — never inferred by semantic similarity.
 
-## Qué NO cubre
+## What it does NOT cover
 
-- Repos enteros (probado en subsistemas de hasta ~900 nodos de 3.500).
-- Mantener el grafo vivo automáticamente: la estructura se regenera, la
-  curación hay que revisarla a mano cuando el código cambia.
-- Imports dinámicos (`require(variable)`, `import()` en runtime).
-- Relaciones inferidas por significado, en cualquier modo — si la relación
-  no está escrita, no se dibuja.
+- Entire repos (proven on subsystems of up to ~900 nodes out of 3,500).
+- Automatically keeping the graph alive: structure regenerates, but
+  curation has to be reviewed by hand when the code changes.
+- Dynamic imports (`require(variable)`, runtime `import()`).
+- Relations inferred by meaning, in any mode — if the relation
+  isn't written, it isn't drawn.
 
-## Estructura
+## Structure
 
 ```
-SKILL.md                    # las instrucciones completas, paso a paso
+SKILL.md                    # the complete instructions, step by step
 references/
-  planning.md                # detalle del Paso 1 (planificación)
-  curation.md                 # detalle del Paso 5 (curación de significado)
+  planning.md                # detail for Step 1 (planning)
+  curation.md                 # detail for Step 5 (meaning curation)
 scripts/
-  build.py                    # extracción + build del grafo
-  viewer-template.html        # plantilla del visor HTML autocontenido
+  build.py                    # extraction + graph build
+  viewer-template.html        # self-contained HTML viewer template
 ```
 
-## Uso
+## Usage
 
-Este directorio es un [skill de Claude Code](https://docs.claude.com/claude-code/skills).
-Colócalo en `~/.claude/skills/code-graph/` (o el directorio de skills del
-proyecto) y se activa cuando la tarea coincide con su descripción — entender
-un subsistema que no escribiste, mapear antes de refactorizar, o pedirlo
-explícitamente ("grafo de código", "code graph").
+This directory is a [Claude Code skill](https://docs.claude.com/claude-code/skills).
+Place it in `~/.claude/skills/code-graph/` (or the project's skills
+directory) and it activates when the task matches its description — understanding
+a subsystem you didn't write, mapping before refactoring, or asking for it
+explicitly ("code graph", "map the subsystem").
+
+## Research paper
+
+The methodology behind the 8 steps — each one derived from a real failure
+observed while building this skill, and corroborated against 160 literature
+sources — is written up as a paper: *"Curación Verificable de Grafos de
+Código Híbridos: una Metodología de Ocho Pasos Derivada de un Caso Real y
+Corroborada por Literatura"* (DOI: [10.5281/zenodo.21498564](https://doi.org/10.5281/zenodo.21498564)).

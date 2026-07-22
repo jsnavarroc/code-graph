@@ -1,321 +1,322 @@
-# Paso 1 — Planificar el grafo (con el humano)
+# Step 1 — Planning the graph (with the human)
 
-Este paso evita rehacer trabajo. Las respuestas las da el humano; tu exploras el
-codigo y **sugieres**. Nunca decidas por el: un grafo agrupado mal miente en cada
-consulta, y las 112 violaciones falsas del caso original salieron justo de aqui.
+This step prevents redoing work. The answers come from the human; you explore the
+code and **suggest**. Never decide for them: a badly grouped graph lies on every
+query, and the 112 false violations from the original case came from right here.
 
-Salen cinco respuestas escritas que alimentan el CONFIG de build.py.
-
----
-
-## 1. ¿Cual es el subsistema y cuales son sus semillas?
-
-Un grafo de todo no sirve: es la bola de pelo que nadie lee. Un grafo de un
-subsistema con su blast-radius si.
-
-**Pregunta:**
-> "¿Que subsistema quieres entender? ¿Que carpetas o rutas lo forman?"
-
-**Criterio:** una semilla es codigo que ES el subsistema, no algo que lo usa.
-Si dudas: *¿este archivo existiria si el subsistema no existiera?* Si -> vecino.
-
-Los vecinos NO se declaran: el script los saca siguiendo los edges. Eso es el
-blast-radius, y es la mitad del valor del grafo.
-
-**Alarma:** mas de ~1500 nodos = alcance mal puesto. Reduce las semillas.
+Five written answers come out of this that feed into build.py's CONFIG.
 
 ---
 
-## 2. ¿Como se agrupan los nodos? ← EXPLORA Y SUGIERE
+## 1. What is the subsystem and what are its seeds?
+
+A graph of everything is useless: it's the hairball nobody reads. A graph of a
+subsystem with its blast-radius is.
+
+**Question:**
+> "What subsystem do you want to understand? What folders or paths make it up?"
+
+**Criterion:** a seed is code that IS the subsystem, not something that uses it.
+If unsure: *would this file exist if the subsystem didn't?* If not -> neighbor.
+
+Neighbors are NOT declared: the script pulls them following the edges. That's
+the blast-radius, and it's half the value of the graph.
+
+**Warning sign:** more than ~1500 nodes = scope set wrong. Reduce the seeds.
+
+---
+
+## 2. How are nodes grouped? ← EXPLORE AND SUGGEST
 
 <CRITICAL>
-NO asumas que el proyecto se organiza en capas de dependencia. Es UNA forma
-entre muchas. Explora la estructura real y sugiere lo que veas.
+DO NOT assume the project is organized in dependency layers. It's ONE form
+among many. Explore the real structure and suggest what you see.
 </CRITICAL>
 
-Son tres movimientos: **leer el proyecto → contrastar con lo publicado →
-sugerir**. En ese orden.
+It's three moves: **read the project → contrast with what's published →
+suggest**. In that order.
 
-### 2.1 Lee la estructura real
+### 2.1 Read the real structure
 
 ```bash
-# La forma de las carpetas suele delatar como piensa el equipo
+# Folder shape usually gives away how the team thinks
 find <src> -maxdepth 3 -type d -not -path "*/node_modules/*" | head -40
 
-# Los imports dicen la verdad cuando las carpetas mienten:
-# ¿que se importa mas y desde donde?
+# Imports tell the truth when folders lie:
+# what gets imported most, and from where?
 grep -rhoE "from ['\"][@.][^'\"]+" <src> --include="*.js" 2>/dev/null \
   | sed "s/from ['\"]//" | cut -d/ -f1-2 | sort | uniq -c | sort -rn | head -15
 ```
 
-Mira tambien qué declara el propio proyecto: `README`, `CONTRIBUTING`, docs de
-arquitectura, un `CLAUDE.md`. A veces la agrupacion ya está escrita.
+Also look at what the project itself declares: `README`, `CONTRIBUTING`, architecture
+docs, a `CLAUDE.md`. Sometimes the grouping is already written down.
 
 <IMPORTANT>
-Las carpetas pueden mentir. Un proyecto puede tener `components/ hooks/ utils/`
-por inercia del generador y estar organizado de verdad por feature. Contrasta lo
-que dicen las carpetas con lo que dicen los imports.
+Folders can lie. A project may have `components/ hooks/ utils/`
+out of generator inertia and actually be organized by feature. Contrast what
+the folders say with what the imports say.
 </IMPORTANT>
 
-### 2.2 Contrasta con lo publicado (busqueda web)
+### 2.2 Contrast with what's published (web search)
 
 <IMPORTANT>
-No te fies solo de tu memoria de arquitecturas: hay convenciones que no conoces,
-y otras que cambiaron. Busca antes de sugerir.
+Don't rely solely on your memory of architectures: there are conventions you don't know,
+and others that changed. Search before suggesting.
 </IMPORTANT>
 
-Util cuando:
-- **Reconoces el patron a medias** — busca su nomenclatura oficial y sus grupos
-  canonicos. Que Atomic Design tenga `templates` y `pages` ademas de los tres
-  primeros no se adivina: se comprueba.
-- **No reconoces nada** — busca por el stack: *"<framework> project structure
-  conventions"*, *"<framework> architecture layers"*. Puede que sea un patron
-  estandar del ecosistema.
-- **El patron tiene reglas de dependencia declaradas** — muchas arquitecturas las
-  publican (hexagonal, clean, feature-sliced). Eso alimenta directo el paso 3.
-- **El proyecto usa un framework con opinion propia** — Next.js, NestJS, Django,
-  Rails traen su estructura. Confirma la version, que cambian.
+Useful when:
+- **You half-recognize the pattern** — search for its official naming and its
+  canonical groups. That Atomic Design has `templates` and `pages` besides the first
+  three isn't guessed: it's checked.
+- **You recognize nothing** — search by the stack: *"<framework> project structure
+  conventions"*, *"<framework> architecture layers"*. It might be a
+  standard ecosystem pattern.
+- **The pattern has declared dependency rules** — many architectures
+  publish them (hexagonal, clean, feature-sliced). That feeds directly into step 3.
+- **The project uses an opinionated framework** — Next.js, NestJS, Django,
+  Rails come with their own structure. Confirm the version, they change.
 
-Ejemplos de busqueda:
+Search examples:
 ```
-"feature-sliced design" layers segments        <- si ves app/ pages/ widgets/
-"hexagonal architecture" dependency rule       <- si ves domain/ application/
-"nestjs" module structure conventions          <- si el framework tiene opinion
-"atomic design" pages templates organisms      <- confirmar los grupos canonicos
+"feature-sliced design" layers segments        <- if you see app/ pages/ widgets/
+"hexagonal architecture" dependency rule       <- if you see domain/ application/
+"nestjs" module structure conventions          <- if the framework has an opinion
+"atomic design" pages templates organisms      <- to confirm the canonical groups
 ```
 
-**Correlaciona las dos fuentes.** Lo local manda: si el proyecto dice que usa
-Atomic Design pero no tiene `templates/`, el grafo agrupa lo que HAY, no lo que
-el patron canonico dice que deberia haber. La busqueda sirve para nombrar bien y
-para no perderte grupos, no para imponer un molde.
+**Correlate the two sources.** What's local overrides: if the project says it uses
+Atomic Design but has no `templates/`, the graph groups what's THERE, not what
+the canonical pattern says should be there. The search is for naming things well and
+not missing groups, not for imposing a mold.
 
-### 2.3 Sugiere, con lo que encontraste
+### 2.3 Suggest, with what you found
 
-**Pregunta:**
-> "Veo <estructura local>. Se parece a <patron>, que segun <fuente> se organiza
-> en <grupos>. ¿Agrupamos asi, de otra forma, o no agrupamos?"
+**Question:**
+> "I see <local structure>. It resembles <pattern>, which according to <source>
+> organizes into <groups>. Should we group it this way, another way, or not
+> group at all?"
 
-Patrones frecuentes, como punto de partida —**no como catalogo cerrado**:
+Frequent patterns, as a starting point —**not as a closed catalog**:
 
-| Si ves... | Puede ser | ¿Tiene direccion? |
+| If you see... | It might be | Does it have direction? |
 |---|---|---|
-| `atoms/ molecules/ organisms/` | Atomic Design | No: composicion |
-| `domain/ application/ infrastructure/` | Hexagonal / Clean | Si |
-| `app/ pages/ widgets/ features/ entities/ shared/` | Feature-Sliced Design | Si |
-| `features/auth/ features/cart/` | Modular por dominio | A veces |
-| `components/ hooks/ services/ utils/` | Tipo de artefacto | No |
-| `controllers/ resolvers/ subscribers/` | Tipo de interfaz (REST/GraphQL) | No: paralelos |
-| `encoders/ decoders/ codecs/` | Pares simetricos | No |
-| Nativo + estado + UI | Capas de dependencia | Si |
-| Nada claro | Quiza no hay agrupacion que valga | — |
+| `atoms/ molecules/ organisms/` | Atomic Design | No: composition |
+| `domain/ application/ infrastructure/` | Hexagonal / Clean | Yes |
+| `app/ pages/ widgets/ features/ entities/ shared/` | Feature-Sliced Design | Yes |
+| `features/auth/ features/cart/` | Domain modular | Sometimes |
+| `components/ hooks/ services/ utils/` | Artifact type | No |
+| `controllers/ resolvers/ subscribers/` | Interface type (REST/GraphQL) | No: parallel |
+| `encoders/ decoders/ codecs/` | Symmetric pairs | No |
+| Native + state + UI | Dependency layers | Yes |
+| Nothing clear | Maybe no grouping is worth it | — |
 
-**Es legitimo no agrupar.** Si el proyecto no tiene estructura clara, meter todos
-los nodos en un carril y usar el grafo solo para blast-radius es mejor que
-inventar una agrupacion falsa. Forzar capas donde no las hay es peor que no
-tenerlas.
+**Not grouping is legitimate.** If the project has no clear structure, putting all
+nodes in one lane and using the graph only for blast-radius is better than
+inventing a false grouping. Forcing layers where there are none is worse than not
+having them.
 
-**La agrupacion define la posicion vertical de cada nodo en el visor.** Numera
-los grupos en el orden en que quieras verlos de arriba abajo.
+**The grouping defines each node's vertical position in the viewer.** Number
+the groups in the order you want them seen top to bottom.
 
 ---
 
-## 3. ¿Hay una regla de dependencia que vigilar? (OPCIONAL)
+## 3. Is there a dependency rule to watch? (OPTIONAL)
 
 <IMPORTANT>
-Agrupar y vigilar dependencias son DOS COSAS DISTINTAS. No las mezcles.
+Grouping and watching dependencies are TWO DIFFERENT THINGS. Don't mix them.
 
-Atomic Design agrupa por composicion, no por dependencia: un atomo no "usa" una
-molecula, la molecula se compone de atomos. Aplicarle un detector de violaciones
-produce alarmas que no significan nada.
+Atomic Design groups by composition, not by dependency: an atom doesn't "use" a
+molecule, the molecule is composed of atoms. Applying a violation detector to it
+produces alarms that mean nothing.
 </IMPORTANT>
 
-**Pregunta:**
-> "¿Hay una regla de que puede usar que, que te interese vigilar?"
+**Question:**
+> "Is there a rule of what can use what that you'd want to watch?"
 
-Ejemplos de reglas reales:
-- *"La UI no importa de infraestructura directamente"* (hexagonal)
-- *"Los organismos no importan de otros organismos"* (atomic)
-- *"Ninguna feature importa de otra feature"* (modular)
-- *"El componente de navegacion no depende del contenido"* (regla de UI comun)
+Examples of real rules:
+- *"The UI doesn't import from infrastructure directly"* (hexagonal)
+- *"Organisms don't import from other organisms"* (atomic)
+- *"No feature imports from another feature"* (modular)
+- *"The navigation component doesn't depend on content"* (common UI rule)
 
-**Si hay regla:** numera los grupos de forma que las dependencias SANAS bajen
-(4 usa 3, 3 usa 2). Asi lo que sube es una violacion detectable.
+**If there's a rule:** number the groups so that HEALTHY dependencies go down
+(4 uses 3, 3 uses 2). That way what goes up is a detectable violation.
 
-**Si no hay regla:** deja `CHECK_LAYER_VIOLATIONS = False` en el CONFIG. El grafo
-sigue siendo util para blast-radius y comprension; simplemente no marca nada en
-rojo. Es lo normal en agrupaciones por composicion o por feature.
+**If there's no rule:** leave `CHECK_LAYER_VIOLATIONS = False` in the CONFIG. The graph
+is still useful for blast-radius and comprehension; it just doesn't flag anything in
+red. That's normal in groupings by composition or by feature.
 
-**Si el humano no sabe:** no la inventes. Sin regla es mejor que con una regla
-falsa — una regla inventada genera alarmas que entrenan al equipo a ignorar el
-rojo.
-
----
-
-## 4. ¿Que es transversal? (grupo 0) ← EL MAS IMPORTANTE
-
-Solo aplica si hay regla de dependencia (paso 3). Saltarselo produjo **112
-violaciones de las cuales 112 eran falsas**.
-
-**Pregunta:**
-> "¿Que utilidades usa todo el mundo y no pertenecen a ningun grupo?"
-
-**El test:** ¿que un nodo del grupo mas alto use esto seria un problema de
-arquitectura? Si la respuesta es no, es transversal.
-
-Casi siempre: logging, config, autenticacion, helpers de formato, contextos que
-solo comparten refs, constantes.
-
-**Ejemplos tipicos:** un helper de logging (con cientos de consumidores — no es
-capa, es plomeria), configuracion global, autenticacion, utilidades de formato,
-contextos que solo comparten referencias.
-
-**Por que importa tanto:** un grafo que grita 112 alarmas falsas entrena al
-usuario a ignorar el rojo. Con 12 reales, el rojo vuelve a significar algo.
+**If the human doesn't know:** don't invent one. No rule is better than a
+false rule — an invented rule generates alarms that train the team to ignore
+red.
 
 ---
 
-## 4b. ¿Como se conectan las aristas cuando hay ambiguedad? (SOLO modo `docs`)
+## 4. What's cross-cutting? (group 0) ← THE MOST IMPORTANT ONE
+
+Only applies if there's a dependency rule (step 3). Skipping it produced **112
+violations, all 112 false**.
+
+**Question:**
+> "What utilities does everyone use that belong to no group?"
+
+**The test:** would the highest-level group using this be an architecture
+problem? If the answer is no, it's cross-cutting.
+
+Almost always: logging, config, authentication, formatting helpers, contexts that
+only share refs, constants.
+
+**Typical examples:** a logging helper (with hundreds of consumers — it's not a
+layer, it's plumbing), global configuration, authentication, formatting utilities,
+contexts that only share references.
+
+**Why it matters so much:** a graph screaming 112 false alarms trains the
+user to ignore red. With 12 real ones, red means something again.
+
+---
+
+## 4b. How are edges connected when there's ambiguity? (`docs` mode ONLY)
 
 <IMPORTANT>
-En modo `code` esto no se pregunta: la arista sale del AST (calls/imports), no hay
-ambiguedad que decidir. Esta pregunta aplica SOLO cuando `EXTRACT_MODE = 'docs'`
-(corpus sin codigo fuente — ver SKILL.md, seccion "Corpus sin codigo").
+In `code` mode this isn't asked: the edge comes from the AST (calls/imports), there's no
+ambiguity to decide. This question applies ONLY when `EXTRACT_MODE = 'docs'`
+(corpus without source code — see SKILL.md, "Corpus without code" section).
 </IMPORTANT>
 
-Un corpus de documentos no tiene un AST que diga "esto llama a aquello". La
-conexion sale de lo que el corpus YA declara por escrito (wikilinks, campos de
-relacion en JSON). Cuando esa señal no esta, o hay mas de una forma razonable de
-leerla, no decidas tu solo — **sugiere la lectura mas obvia y pregunta**.
+A corpus of documents has no AST that says "this calls that." The
+connection comes from what the corpus ALREADY declares in writing (wikilinks, relation
+fields in JSON). When that signal isn't there, or there's more than one reasonable way to
+read it, don't decide alone — **suggest the most obvious reading and ask**.
 
 <IMPORTANT>
-Antes de formular la propuesta, busca en la web — igual que en el paso 2.2
-(agrupacion de codigo). Si el corpus es de un dominio con convenciones propias
-de linkeo/citacion (ej. Zettelkasten, PRISMA, un formato de citacion academico,
-un esquema de metadatos conocido como Dublin Core o schema.org), esas
-convenciones ya resuelven "cual campo es la relacion" mejor que adivinarlo solo
-mirando los nombres de campo. Ejemplos de busqueda:
+Before formulating the proposal, search the web — same as in step 2.2
+(code grouping). If the corpus is from a domain with its own linking/citation
+conventions (e.g. Zettelkasten, PRISMA, an academic citation format,
+a metadata schema known as Dublin Core or schema.org), those
+conventions already resolve "which field is the relation" better than guessing it just
+by looking at field names. Search examples:
 ```
-"<nombre del campo visto>" metadata schema standard   <- si un campo tiene nombre raro
-"zettelkasten" linking convention                       <- si ves ids tipo notas enlazadas
-"PRISMA" systematic review citation graph                <- si el corpus es literatura academica
-"<formato de cita visto>" citation graph field           <- si hay un campo tipo doi/cita_a
+"<field name seen>" metadata schema standard   <- if a field has an odd name
+"zettelkasten" linking convention                       <- if you see linked-note-style ids
+"PRISMA" systematic review citation graph                <- if the corpus is academic literature
+"<citation format seen>" citation graph field           <- if there's a doi/cita_a-type field
 ```
-Igual que en 2.2: lo local manda. Si la busqueda sugiere un campo que el corpus
-NO tiene, no lo inventes — usala solo para nombrar mejor la relacion que SI
-esta, o para no perderte un campo equivalente que llame distinto (ej. "refs"
-vs "bibliography" vs "see_also"). La busqueda mejora la propuesta que le
-presentas al humano; no sustituye la confirmacion del humano.
+Same as in 2.2: what's local overrides. If the search suggests a field the corpus
+does NOT have, don't invent it — use it only to better name the relation that IS
+there, or to not miss an equivalent field with a different name (e.g. "refs"
+vs "bibliography" vs "see_also"). The search improves the proposal you
+present to the human; it doesn't replace the human's confirmation.
 </IMPORTANT>
 
 <IMPORTANT>
-Formula la pregunta como ACEPTAR/RECHAZAR una propuesta concreta con ejemplos
-reales del corpus — nunca como "¿como quieres que conectemos?" abierta. Una
-pregunta abierta obliga al humano a diseñar la solucion; una pregunta cerrada
-con la sugerencia ya escrita solo le exige un veredicto. Esto esta validado:
-en un estudio real (2 escenarios industriales, Watkiss-Leek et al. 2026,
-"IDEA2"), separar "quien propone" (el agente) de "quien valida" (el humano)
-con una decision binaria + comentario opcional logro 92-95% de aceptacion en
-la primera pasada, a un costo de ~1 minuto por decision cuando la propuesta
-ya venia anclada en estructura real del corpus (no en texto libre inventado).
+Phrase the question as ACCEPT/REJECT a concrete proposal with real
+examples from the corpus — never as an open "how do you want us to connect
+this?" An open question forces the human to design the solution; a closed
+question with the suggestion already written only asks for a verdict. This is
+validated: in a real study (2 industry scenarios, Watkiss-Leek et al. 2026,
+"IDEA2"), separating "who proposes" (the agent) from "who validates" (the human)
+with a binary decision + optional comment achieved 92-95% first-pass
+acceptance, at a cost of ~1 minute per decision when the proposal
+was already anchored in the corpus's real structure (not free-form invented text).
 </IMPORTANT>
 
-**Formato de pregunta (tres niveles de esfuerzo, en este orden — nunca saltar al 3):**
+**Question format (three effort levels, in this order — never skip to 3):**
 
-1. **Decision binaria con ejemplo concreto** (obligatoria, la unica que el humano
-   DEBE responder):
-   > "Propongo conectar por <campo/señal encontrada>. Ejemplo real: `<nodo A>`
-   > se conectaria con `<nodo B>` porque ambos <razon con el valor exacto visto,
-   > ej. 'comparten relevancia_hueco: H6'>. ¿Aceptas esta regla para todo el
-   > corpus? (si / no)"
+1. **Binary decision with a concrete example** (mandatory, the only one the human
+   MUST answer):
+   > "I propose connecting by <field/signal found>. Real example: `<node A>`
+   > would connect to `<node B>` because both <reason with the exact value seen,
+   > e.g. 'share relevancia_hueco: H6'>. Do you accept this rule for the whole
+   > corpus? (yes / no)"
 
-2. **Elegir entre alternativas ya generadas** (solo si hay mas de una señal
-   candidata — nunca redactar la alternativa, ofrecerla ya formulada):
-   > "Si no: el corpus tambien tiene estos campos que podrian ser la conexion.
-   > ¿Cual prefieres?
-   >   a) `cita_a` — conecta quien cita a quien (direccional)
-   >   b) `relevancia_hueco` — conecta quien sostiene el mismo argumento (no direccional)
-   >   c) ninguno — dejar los nodos sueltos, el corpus no tiene señal fiable"
+2. **Choosing among already-generated alternatives** (only if there's more than one
+   candidate signal — never draft the alternative, offer it already formulated):
+   > "If not: the corpus also has these fields that could be the connection.
+   > Which do you prefer?
+   >   a) `cita_a` — connects who cites whom (directional)
+   >   b) `relevancia_hueco` — connects who holds the same argument (non-directional)
+   >   c) none — leave the nodes disconnected, the corpus has no reliable signal"
 
-3. **Comentario libre** (opcional, solo si rechazo la propuesta y ninguna
-   alternativa de la lista sirve): pedir una frase corta, nunca una redaccion
-   larga — "¿en una frase, que si conectaria estos nodos para ti?"
+3. **Free comment** (optional, only if I rejected the proposal and no
+   alternative on the list works): ask for a short sentence, never a long
+   write-up — "in one sentence, what WOULD connect these nodes for you?"
 
-**Casos tipicos y la propuesta concreta a ofrecer en el nivel 1 (nunca aplicar sin el "si" del humano):**
+**Typical cases and the concrete proposal to offer at level 1 (never apply without the human's "yes"):**
 
-| Lo que ves en el corpus | Propuesta a poner en la pregunta de nivel 1 |
+| What you see in the corpus | Proposal to put in the level-1 question |
 |---|---|
-| Wikilinks `[[id]]` o links relativos `[texto](otro.md)` | "Conectar cada wikilink/link con el documento que referencia" — esta suele aceptarse directo, es la señal mas inambigua |
-| Un campo de lista tipo `relevancia_hueco: [H1, H6]`, `cita_a: [...]`, `refs: [...]` | "Conectar entradas que comparten el mismo valor en `<campo>`" — con un ejemplo real de dos entradas que lo cumplen, sacado del propio corpus |
-| Solo prosa libre, sin campos ni links | No hay propuesta de nivel 1 que ofrecer honestamente. Salta directo a decirlo: "no encuentro señal escrita de conexion — el grafo saldra con nodos sueltos, sirve para curar pero no para navegar. ¿Prefieres anadir un campo de relacion al corpus antes de seguir, o continuamos sin aristas?" (esto tambien es una pregunta cerrada, no abierta) |
-| Varios campos candidatos a la vez | Usa el nivel 2 directo: ofrece cada campo como opcion ya formulada con su propio ejemplo, no preguntes "¿cual usarias?" en abstracto |
+| Wikilinks `[[id]]` or relative links `[text](other.md)` | "Connect each wikilink/link with the document it references" — this usually gets accepted directly, it's the least ambiguous signal |
+| A list-type field like `relevancia_hueco: [H1, H6]`, `cita_a: [...]`, `refs: [...]` | "Connect entries that share the same value in `<field>`" — with a real example of two entries that meet it, taken from the corpus itself |
+| Only free prose, no fields or links | There's no level-1 proposal to honestly offer. Skip straight to saying so: "I find no written connection signal — the graph will come out with disconnected nodes, it's useful for curation but not for navigation. Would you rather add a relation field to the corpus before continuing, or do we proceed with no edges?" (this is also a closed question, not an open one) |
+| Several candidate fields at once | Use level 2 directly: offer each field as an already-formulated option with its own example, don't ask "which would you use?" in the abstract |
 
-**Nodos que quedan sin ninguna arista tras la extraccion:** no los ocultes ni los
-conectes a la fuerza. Muestraselos al humano como lista aparte ("N documentos sin
-conexion detectada") — es la misma logica que un nodo de codigo con 0 consumidores
-(candidato a revisar, no un error a corregir en silencio, ver Paso 6 y N1-039).
+**Nodes left with no edge at all after extraction:** don't hide them or force-
+connect them. Show them to the human as a separate list ("N documents with no
+connection detected") — it's the same logic as a code node with 0 consumers
+(a candidate to review, not an error to silently fix, see Step 6 and N1-039).
 
 <CRITICAL>
-**Caso especial: relaciones reales pero externas (ej. citas bibliograficas via
-API tipo OpenAlex/Semantic Scholar).** Esto NO es lo mismo que "inferir por
-similitud semantica" (ya prohibido en todo el skill) — la API devuelve una
-relacion que de verdad existe: el paper A cita al paper B de verdad. Pero traerla
-automaticamente igual esta prohibido, por una razon distinta: que una cita exista
-bibliograficamente no dice si esa cita **importa para el argumento** que el
-corpus esta construyendo. Un corpus de investigacion puede citar una fuente para
-darle la razon, para contradecirla, o de pasada en una nota al pie — la API no
-distingue esos tres casos, y solo el humano sabe cual sirve al objetivo del
-documento que se esta escribiendo.
+**Special case: real but external relations (e.g. bibliographic citations via
+an API like OpenAlex/Semantic Scholar).** This is NOT the same as "inferring by
+semantic similarity" (already forbidden throughout the skill) — the API returns a
+relation that really exists: paper A really does cite paper B. But bringing it
+in automatically all the same is forbidden, for a different reason: that a citation exists
+bibliographically doesn't say whether that citation **matters to the argument**
+the corpus is building. A research corpus can cite a source to
+agree with it, to contradict it, or in passing in a footnote — the API doesn't
+distinguish those three cases, and only the human knows which one serves the goal
+of the document being written.
 
-Por eso, si vas a usar una API bibliografica como insumo:
-1. Uso permitido: la API alimenta la PROPUESTA que le llevas al humano, nunca
-   escribe la arista directo. No hay atajo de volumen — si la API devuelve 40
-   citas cruzadas, son 40 decisiones, no una regla generica aplicada a las 40.
-2. La pregunta de nivel 1 (arriba) cambia de forma para este caso — no es
-   "¿aceptas esta regla para todo el corpus?" (una regla no decide relevancia
-   argumental caso por caso), es por relacion encontrada:
-   > "La API dice que `<fuente A>` cita a `<fuente B>` (real, verificable). En
-   > el argumento que estas construyendo, ¿esa cita importa? (si, la uso como
-   > arista / no, es ruido bibliografico / la uso pero con otro sentido: <cual>)"
-3. Nunca escribas el archivo de citas (ej. `citas_intra_corpus.json` o
-   equivalente) completo desde el resultado crudo de la API. Ese archivo se
-   llena con las relaciones que el humano ya confirmo, una por una — es
-   contenido de curacion, no estructura, y aplica la misma regla aditiva que
-   `curation.yaml` (ver SKILL.md, seccion "Por que esto NO se puede automatizar
-   del todo").
+That's why, if you're going to use a bibliographic API as an input:
+1. Permitted use: the API feeds the PROPOSAL you bring to the human, it never
+   writes the edge directly. There's no shortcut by volume — if the API returns 40
+   cross-citations, that's 40 decisions, not one generic rule applied to all 40.
+2. The level-1 question (above) changes shape for this case — it's not
+   "do you accept this rule for the whole corpus?" (a rule doesn't decide
+   argumentative relevance case by case), it's per relation found:
+   > "The API says `<source A>` cites `<source B>` (real, verifiable). In
+   > the argument you're building, does that citation matter? (yes, I use it as
+   > an edge / no, it's bibliographic noise / I use it but with a different meaning: <which>)"
+3. Never write the citations file (e.g. `citas_intra_corpus.json` or
+   equivalent) entirely from the API's raw output. That file gets
+   filled with the relations the human already confirmed, one by one — it's
+   curation content, not structure, and follows the same additive rule as
+   `curation.yaml` (see SKILL.md, "Why this can't be fully automated"
+   section).
 </CRITICAL>
 
 ---
 
-## 5. ¿Que es ruido?
+## 5. What's noise?
 
-**Pregunta:**
-> "¿Que archivos no aportan nada al entendimiento del subsistema?"
+**Question:**
+> "What files add nothing to understanding the subsystem?"
 
-**Por defecto:** tests, estilos, mocks, generados, snapshots.
+**By default:** tests, styles, mocks, generated files, snapshots.
 
-**Ojo con los tests:** fuera del grafo porque inflan el impacto (30 tests hacen
-que un simbolo parezca muy usado), pero son buena fuente para CURAR: un test bien
-escrito dice que se espera de la funcion.
+**Watch out with tests:** out of the graph because they inflate impact (30 tests make
+a symbol look heavily used), but they're a good source for CURATION: a well-
+written test tells you what's expected of the function.
 
-**Ruido del propio AST** (comprobado): tipos del sistema extraidos como codigo
-propio (`Bool`, `UIView`), comentarios que quedan como nodo, desestructuraciones
-de import. El script filtra los nodos sin `source_file`, que caza la mayoria.
+**Noise from the AST itself** (confirmed): system types extracted as if they were
+your own code (`Bool`, `UIView`), comments left as a node, import
+destructurings. The script filters out nodes with no `source_file`, which catches most of it.
 
 ---
 
-## Salida de este paso
+## Output of this step
 
-Ensena esto al humano y pide confirmacion ANTES de extraer nada:
+Show this to the human and ask for confirmation BEFORE extracting anything:
 
 ```
-Subsistema  : <nombre>
-Semillas    : <rutas>
-Agrupacion  : <por que criterio, y por que ese>
-  grupo 1   : <nombre> - <descripcion>
-  grupo 2   : <nombre> - <descripcion>
+Subsystem   : <name>
+Seeds       : <paths>
+Grouping    : <what criterion, and why that one>
+  group 1   : <name> - <description>
+  group 2   : <name> - <description>
   ...
-Regla dep.  : <la regla | NO HAY - violaciones desactivadas>
-Grupo 0     : <transversal, si aplica>
-Excluido    : <ruido>
-Aristas     : <SOLO modo docs: que campo/señal se usa para conectar, confirmado por el humano>
+Dep. rule   : <the rule | NONE - violations disabled>
+Group 0     : <cross-cutting, if applicable>
+Excluded    : <noise>
+Edges       : <ONLY docs mode: what field/signal is used to connect, confirmed by the human>
 ```

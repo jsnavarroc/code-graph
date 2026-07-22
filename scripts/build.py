@@ -1,63 +1,63 @@
 #!/usr/bin/env python3
-"""Construye un grafo de codigo hibrido: subsistema + su blast-radius.
+"""Builds a hybrid code graph: subsystem + its blast-radius.
 
-Estructura (nodos, edges, impacto) = AST via graphify. Ground truth, regenerable.
-Significado (grupo, que hace, por que) = curation.yaml. Escrito a mano leyendo.
+Structure (nodes, edges, impact) = AST via graphify. Ground truth, regenerable.
+Meaning (group, what it does, why) = curation.yaml. Hand-written by reading.
 
-Uso:
-    python3 build.py --extract   # extrae el AST y construye
-    python3 build.py             # reconstruye con el AST cacheado (~1s)
+Usage:
+    python3 build.py --extract   # extracts the AST and builds
+    python3 build.py             # rebuilds with the cached AST (~1s)
 
-Configuracion: el bloque CONFIG de abajo. Nada mas se toca por proyecto.
+Configuration: the CONFIG block below. Nothing else is touched per project.
 
 ═══════════════════════════════════════════════════════════════════════════════
-POR QUE ESTE SCRIPT HACE LO QUE HACE
-Cada decision salio de un error real construyendo el primer grafo con el.
+WHY THIS SCRIPT DOES WHAT IT DOES
+Every decision came from a real error building the first graph with it.
 ═══════════════════════════════════════════════════════════════════════════════
 
-1. AGRUPAR NO ES LO MISMO QUE DEPENDER. Son dos ejes independientes.
-   Atomic Design agrupa por composicion (un atomo no "usa" moleculas). REST /
-   GraphQL / microservicios son categorias paralelas. Codificador / decodificador
-   son pares simetricos. En todos esos casos NO hay direccion que violar, y por
-   eso CHECK_LAYER_VIOLATIONS existe: solo se activa si el proyecto declaro una
-   regla direccional real (hexagonal, capas de dependencia).
+1. GROUPING IS NOT THE SAME AS DEPENDING. They're two independent axes.
+   Atomic Design groups by composition (an atom doesn't "use" molecules). REST /
+   GraphQL / microservices are parallel categories. Encoder / decoder
+   are symmetric pairs. In all those cases there's NO direction to violate, and
+   that's why CHECK_LAYER_VIOLATIONS exists: it only activates if the project declared a
+   real directional rule (hexagonal, dependency layers).
 
-2. EL GRUPO 0 (TRANSVERSAL) NO ES "SIN CLASIFICAR".
-   Es la infraestructura que usa todo el mundo (logging, config, auth, helpers) y
-   que no pertenece a ningun grupo. Marcarla como un grupo mas produjo 112
-   violaciones falsas de 112. Con la exencion quedaron 12 reales. Un grafo que
-   grita 112 alarmas falsas entrena al usuario a ignorar el rojo.
-   Y si un archivo es transversal, SUS SIMBOLOS TAMBIEN: los edges apuntan al
-   simbolo, no al archivo. Olvidarlo devolvio las violaciones de 12 a 40.
+2. GROUP 0 (CROSS-CUTTING) IS NOT "UNCLASSIFIED".
+   It's the infrastructure everyone uses (logging, config, auth, helpers) and
+   that belongs to no group. Marking it as one more group produced 112
+   false violations out of 112. With the exemption, 12 remained real. A graph that
+   screams 112 false alarms trains the user to ignore red.
+   And if a file is cross-cutting, SO ARE ITS SYMBOLS: edges point to the
+   symbol, not the file. Forgetting that took the violations back up from 12 to 40.
 
-3. EL AVISO DE CURACION HUERFANA NO ES DECORATIVO.
-   Es lo que impide que el grafo mienta. Caza claves inventadas: rutas que no
-   existen (Boton/Boton.js cuando el real es Boton/index.js), helpers curados en
-   el archivo equivocado, simbolos que el AST no extrae. Sin el, el grafo tendria
-   descripciones apuntando a nada y nadie se enteraria.
+3. THE ORPHANED CURATION WARNING ISN'T DECORATIVE.
+   It's what keeps the graph from lying. It catches invented keys: paths that don't
+   exist (Button/Button.js when the real one is Button/index.js), helpers curated in
+   the wrong file, symbols the AST doesn't extract. Without it, the graph would
+   have descriptions pointing at nothing and nobody would know.
 
-4. EL AST NO VE TODO. Comprobado:
-   - Re-exports (export const x = otroModulo.y).
-   - Propiedades computadas (var foo: Bool { ... } en Swift).
-   - Algunos exports sueltos, sin patron claro.
-   Es el limite del parser, no un fallo. Por eso la curacion se escribe LEYENDO
-   el archivo, nunca fiandose de la lista de nodos.
+4. THE AST DOESN'T SEE EVERYTHING. Confirmed:
+   - Re-exports (export const x = otherModule.y).
+   - Computed properties (var foo: Bool { ... } in Swift).
+   - Some loose exports, with no clear pattern.
+   It's the parser's limit, not a bug. That's why curation is written by READING
+   the file, never trusting the node list.
 
-5. EL AST TAMBIEN METE RUIDO. Se filtra:
-   - Tipos del sistema extraidos como codigo propio (Bool, UIView...): salen sin
-     source_file.
-   - Artefactos del parser: comentarios que quedan como nodo, desestructuraciones
-     de import.
+5. THE AST ALSO ADDS NOISE. Filtered out:
+   - System types extracted as if they were your own code (Bool, UIView...): they come out
+     with no source_file.
+   - Parser artifacts: comments left as a node, import
+     destructurings.
 
-6. NUNCA DERIVAR DESCRIPCIONES DEL NOMBRE.
-   Se intento y se descarto: "setIsNavigating -> escribe is navigating en el
-   estado global" es una tautologia disfrazada de documentacion. Ensucia el grafo
-   con ruido que aparenta conocimiento. Si un nodo no se ha leido, se queda sin
-   describir.
+6. NEVER DERIVE DESCRIPTIONS FROM THE NAME.
+   Tried and discarded: "setIsNavigating -> writes is navigating to
+   global state" is a tautology disguised as documentation. It pollutes the graph
+   with noise that looks like knowledge. If a node hasn't been read, it stays
+   undescribed.
 
-7. HERENCIA != DESCRIPCION PROPIA.
-   Un simbolo puede mostrar el contexto de su archivo, pero eso no es describirlo.
-   Contarlas juntas reporto 100% de cobertura con 547 nodos sin descripcion real.
+7. INHERITANCE != OWN DESCRIPTION.
+   A symbol may show its file's context, but that isn't describing it.
+   Counting them together reported 100% coverage with 547 nodes with no real description.
 ═══════════════════════════════════════════════════════════════════════════════
 """
 import json
@@ -69,72 +69,73 @@ from pathlib import Path
 HERE = Path(__file__).parent
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  CONFIG — lo unico que se toca por proyecto. Sale del Paso 1 (planning).  ║
+# ║  CONFIG — the only thing touched per project. Comes out of Step 1 (planning). ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
-# 1. RAIZ DEL CODIGO. Lo que se extrae. EXTRA_ROOTS es para codigo fuera de la
-#    raiz principal (ej: el SDK nativo iOS junto a un src/ de JavaScript).
-#    Cada extra: (ruta, prefijo con el que aparece en el grafo).
-SRC_ROOT = Path('/ruta/absoluta/a/tu/proyecto/src')
+# 1. CODE ROOT. What gets extracted. EXTRA_ROOTS is for code outside the
+#    main root (e.g.: a native iOS SDK next to a JavaScript src/).
+#    Each extra: (path, prefix it appears under in the graph).
+SRC_ROOT = Path('/absolute/path/to/your/project/src')
 EXTRA_ROOTS = [
-    # (Path('/ruta/al/proyecto/ios/App'), 'ios/App'),
+    # (Path('/path/to/project/ios/App'), 'ios/App'),
 ]
 
-# 2. SEMILLAS. Un archivo ES del subsistema si su ruta (relativa a SRC_ROOT)
-#    matchea alguno de estos patrones. Los VECINOS no se declaran: el script los
-#    saca siguiendo los edges. Eso es el blast-radius.
-#    Test: ¿este archivo existiria si el subsistema no existiera? Si -> vecino.
+# 2. SEEDS. A file IS part of the subsystem if its path (relative to SRC_ROOT)
+#    matches one of these patterns. NEIGHBORS are not declared: the script pulls
+#    them following the edges. That's the blast-radius.
+#    Test: would this file exist if the subsystem didn't? If not -> neighbor.
 SEEDS = [
-    r'^ruta/de/tu/subsistema/',
-    r'^otra/ruta/relevante',
+    r'^path/to/your/subsystem/',
+    r'^another/relevant/path',
 ]
 
-# 3. RUIDO. Lo que nunca entra.
-#    Los tests se excluyen porque inflan el impacto (30 tests hacen que un simbolo
-#    parezca muy usado), pero son buena fuente para CURAR.
+# 3. NOISE. What never gets in.
+#    Tests are excluded because they inflate impact (30 tests make a symbol
+#    look heavily used), but they're a good source for CURATION.
 EXCLUDE_RE = re.compile(r'__tests__|\.test\.|/package\.json$|\.styles\.js$|/node_modules/'
                         r'|\.stories\.|/__mocks__/|\.snap$')
 
-# 4. REGLA DE DEPENDENCIA (opcional). Solo ponlo en True si el proyecto TIENE
-#    una regla direccional declarada del tipo "el grupo 4 puede usar el 3, nunca
-#    al reves". Entonces un edge que sube se marca como violacion.
+# 4. DEPENDENCY RULE (optional). Only set this to True if the project HAS
+#    a declared directional rule like "group 4 can use group 3, never
+#    the other way around." Then an edge that goes up is flagged as a
+#    violation.
 #
-#    Dejalo en False si agrupas por composicion (Atomic Design: un atomo no "usa"
-#    una molecula), por feature, o por tipo de artefacto. En esos casos no hay
-#    direccion que violar, y activarlo produce alarmas que no significan nada.
-#    El grafo sigue sirviendo para blast-radius y comprension.
+#    Leave it False if you group by composition (Atomic Design: an atom doesn't "use"
+#    a molecule), by feature, or by artifact type. In those cases there's no
+#    direction to violate, and enabling it produces alarms that mean nothing.
+#    The graph still works for blast-radius and comprehension.
 CHECK_LAYER_VIOLATIONS = False
 
-# 5. AVISO DE TAMANO. Si el grafo supera esto, el alcance esta mal: para y
-#    reduce las semillas. Un grafo que no se puede curar entero no sirve.
+# 5. SIZE WARNING. If the graph exceeds this, the scope is wrong: stop and
+#    reduce the seeds. A graph that can't be fully curated is useless.
 MAX_NODES_WARN = 1500
 
-# ── Ejemplo real (el caso que origino este skill) ──────────────────────────────
-# SRC_ROOT = Path('/Users/x/proyecto/src')
-# EXTRA_ROOTS = [(Path('/Users/x/proyecto/ios/NextPlay'), 'ios/NextPlay')]
+# ── Real example (the case that originated this skill) ────────────────────────
+# SRC_ROOT = Path('/Users/x/project/src')
+# EXTRA_ROOTS = [(Path('/Users/x/project/ios/NextPlay'), 'ios/NextPlay')]
 # SEEDS = [r'^core/atoms/navbar/', r'^core/TVEventService/',
 #          r'^components/content/NavBarTV/', r'^ios/NextPlay/TVRemoteInterceptor']
-# -> 934 nodos (667 del subsistema + 267 vecinos), 3197 edges
+# -> 934 nodes (667 from the subsystem + 267 neighbors), 3197 edges
 # ══════════════════════════════════════════════════════════════════════════════
 
-# 6. MODO DE EXTRACCION. 'code' usa graphify/tree-sitter (AST de codigo fuente).
-#    'docs' usa un extractor propio para corpus SIN codigo: Markdown, JSON de
-#    citas/registros, y PDFs. No hay AST de un PDF - el "nodo" es el documento
-#    completo (metadata como source_file), y las "aristas" salen de referencias
-#    EXPLICITAS ya escritas (wikilinks [[id]] en Markdown, o el campo que el
-#    propio JSON declare como relacion, ej. relevancia_hueco). Es el mismo
-#    principio (estructura automatizable + significado leido a mano), con una
-#    capa de extraccion distinta porque no hay tree-sitter para PDFs.
-#    Ver 'que NO cubre este skill' en SKILL.md antes de usar 'docs': la fiabilidad
-#    de las aristas depende de que el corpus YA tenga referencias cruzadas
-#    explicitas (no se infieren por similitud semantica - eso alucinaria, H-01).
+# 6. EXTRACTION MODE. 'code' uses graphify/tree-sitter (source code AST).
+#    'docs' uses a custom extractor for a corpus WITHOUT code: Markdown, citation/
+#    registry JSON, and PDFs. There's no AST for a PDF - the "node" is the whole
+#    document (metadata as source_file), and "edges" come from EXPLICIT
+#    references already written (wikilinks [[id]] in Markdown, or whichever field the
+#    JSON itself declares as a relation, e.g. relevancia_hueco). It's the same
+#    principle (automatable structure + hand-read meaning), with a
+#    different extraction layer because there's no tree-sitter for PDFs.
+#    See 'what this skill does NOT cover' in SKILL.md before using 'docs': the
+#    reliability of the edges depends on the corpus ALREADY having explicit
+#    cross-references (they're not inferred by semantic similarity - that would hallucinate, H-01).
 EXTRACT_MODE = 'code'  # 'code' | 'docs'
 
-# Solo si EXTRACT_MODE = 'docs': raiz del corpus de documentos.
-DOCS_ROOT = Path('/ruta/absoluta/a/tu/corpus')
+# Only if EXTRACT_MODE = 'docs': root of the document corpus.
+DOCS_ROOT = Path('/absolute/path/to/your/corpus')
 
-# graphify: extractor de AST (25 lenguajes, local, sin API key).
-# Por defecto usa el python del entorno; si lo tienes en un venv, apunta aqui.
+# graphify: AST extractor (25 languages, local, no API key).
+# Uses the environment's python by default; if you have it in a venv, point here.
 GRAPHIFY_PY = Path(sys.executable)
 
 AST_RAW = HERE / 'ast-raw.json'
@@ -145,28 +146,28 @@ VIEWER = HERE / 'index.html'
 
 NAV_RE = re.compile('|'.join(SEEDS))
 
-# Simbolos que son ruido estructural: styled-components, constantes, envoltorios
-# de presentacion. No son logica del subsistema.
+# Symbols that are structural noise: styled-components, constants, presentation
+# wrappers. They aren't subsystem logic.
 NOISE_SYMBOL_RE = re.compile(
     r'^(styles?|Styled\w*|[A-Z_]{3,}|.*Container|.*Wrapper|.*Text|.*Icon|.*Image)$'
 )
 
-# Artefactos del parser: comentarios que quedaron como nodo y desestructuraciones
-# de import ("{ handleTestIDChange }"). No son simbolos, no hay nada que curar.
+# Parser artifacts: comments left as a node and import destructurings
+# ("{ handleTestIDChange }"). They aren't symbols, there's nothing to curate.
 PARSER_ARTIFACT_RE = re.compile(r'^\{|\s{2,}|^(NOTE|TODO|FIXME|HACK|XXX)[: ]')
 
-IMPACT_TIERS = [(50, 'CRITICO'), (20, 'ALTO'), (8, 'MEDIO'), (2, 'BAJO')]
+IMPACT_TIERS = [(50, 'CRITICAL'), (20, 'HIGH'), (8, 'MEDIUM'), (2, 'LOW')]
 
-# Relaciones que cuentan como USO y por tanto suman grado (= impacto).
-# Las cinco primeras son del modo 'code'; 'references' y 'sustains' son del modo
-# 'docs'. 'contains' queda fuera a proposito: es contencion estructural
-# (archivo -> heading), igual que archivo -> simbolo tampoco cuenta en 'code'.
-# Sin las de docs, TODOS los nodos de un corpus salian con grado 0 e impacto
-# HOJA, y el eje de blast-radius quedaba mudo sin avisar. Ver H-29.
+# Relations that count as USE and therefore add to degree (= impact).
+# The first five are from 'code' mode; 'references' and 'sustains' are from
+# 'docs' mode. 'contains' is deliberately left out: it's structural
+# containment (file -> heading), same as file -> symbol also doesn't count in 'code'.
+# Without the docs ones, ALL nodes in a corpus came out with degree 0 and impact
+# LEAF, and the blast-radius axis went mute with no warning. See H-29.
 DEGREE_RELATIONS = ('calls', 'imports', 'imports_from', 'method', 'indirect_call',
                     'references', 'sustains')
 
-# Sufijos que identifican un nodo-ARCHIVO (frente a un nodo-simbolo interno).
+# Suffixes that identify a FILE node (versus an internal symbol node).
 FILE_SUFFIXES = ('.js', '.swift', '.md', '.pdf')
 
 
@@ -174,11 +175,11 @@ def impact_of(in_degree):
     for threshold, name in IMPACT_TIERS:
         if in_degree >= threshold:
             return name
-    return 'HOJA'
+    return 'LEAF'
 
 
 def load_curation():
-    """Lee curation.yaml sin dependencias externas (subset YAML acotado)."""
+    """Reads curation.yaml with no external dependencies (bounded YAML subset)."""
     if not CURATION.exists():
         return {}, {}
     text = CURATION.read_text(encoding='utf-8')
@@ -190,14 +191,14 @@ def load_curation():
         if raw.startswith('meta:'):
             current_key = '__meta__'
             continue
-        # Clave de nodo: "  path/to/file.js::symbol:" (2 espacios de indent)
+        # Node key: "  path/to/file.js::symbol:" (2-space indent)
         m = re.match(r'^  ([^\s:][^:]*(?:::[^\s:]+)?):\s*$', raw)
         if m and not raw.startswith('    '):
             current_key = m.group(1).strip()
             entries.setdefault(current_key, {})
             current_field = None
             continue
-        # Campo escalar: "    field: value"
+        # Scalar field: "    field: value"
         m = re.match(r'^    (\w+):\s*(.*)$', raw)
         if m and current_key:
             field, value = m.group(1), m.group(2).strip()
@@ -215,7 +216,7 @@ def load_curation():
                 entries[current_key][field] = []
                 current_field = field
             continue
-        # Item de lista: "      - texto"
+        # List item: "      - text"
         m = re.match(r'^      -\s*(.+)$', raw)
         if m and current_key and current_field:
             entries[current_key][current_field].append(m.group(1).strip().strip('"\''))
@@ -224,21 +225,21 @@ def load_curation():
 
 
 def curation_key(node):
-    """Clave estable: source_file::symbol. No depende del id que genere graphify.
+    """Stable key: source_file::symbol. Doesn't depend on the id graphify generates.
 
-    Normaliza el label: los metodos Swift vienen como '.setX()' y los hooks JS
-    como 'useX()'. La curacion se escribe con el nombre limpio: 'setX', 'useX'.
+    Normalizes the label: Swift methods come in as '.setX()' and JS hooks
+    as 'useX()'. Curation is written with the clean name: 'setX', 'useX'.
     """
     sf = node.get('source_file', '')
     label = node.get('label', '')
-    # Modo docs, nodo de registro JSON: source_file ya ES la clave
-    # ('registro.json::N2-047', el formato que documenta SKILL.md). Concatenar
-    # ademas el label produce una clave con dos '::', espacios y ':' del titulo,
-    # que el parser de curation.yaml no puede leer - la curacion seria imposible
-    # o quedaria huerfana en silencio. Ver H-30.
+    # docs mode, registry JSON node: source_file already IS the key
+    # ('registry.json::N2-047', the format SKILL.md documents). Also
+    # concatenating the label would produce a key with two '::', spaces and ':' from the title,
+    # which curation.yaml's parser can't read - curation would be impossible
+    # or would silently end up orphaned. See H-30.
     if '::' in sf:
         return sf
-    # Modo docs, documento suelto (.md/.pdf): el archivo ES el nodo.
+    # docs mode, standalone document (.md/.pdf): the file IS the node.
     if label.endswith(('.md', '.pdf')):
         return sf
     if label.endswith('.js') or label.endswith('.swift'):
@@ -257,15 +258,15 @@ def main():
     all_nodes = {n['id']: n for n in ast['nodes']}
     all_edges = ast['edges']
 
-    # 1. Semilla: nodos cuyo archivo pertenece al subsistema.
+    # 1. Seed: nodes whose file belongs to the subsystem.
     seed_ids = {
         nid for nid, n in all_nodes.items()
         if NAV_RE.search(n.get('source_file', '') or '')
         and not EXCLUDE_RE.search(n.get('source_file', '') or '')
     }
 
-    # 2. Blast-radius: vecinos directos (quien los usa / de quien dependen).
-    #    Los nodos ref_* son externos (react, react-native): no son codigo nuestro.
+    # 2. Blast-radius: direct neighbors (who uses them / what they depend on).
+    #    ref_* nodes are external (react, react-native): not our code.
     neighbor_ids = set()
     for e in all_edges:
         s, t = e.get('source'), e.get('target')
@@ -274,16 +275,16 @@ def main():
         if t in seed_ids and s not in seed_ids and not str(s).startswith('ref_'):
             neighbor_ids.add(s)
     def is_signal(nid):
-        """Un vecino entra si es codigo real y no un simbolo decorativo."""
+        """A neighbor gets in if it's real code and not a decorative symbol."""
         n = all_nodes.get(nid)
         if not n or EXCLUDE_RE.search(n.get('source_file', '') or ''):
             return False
-        # Tipos del sistema que el AST de Swift extrae como nodos (Bool, UIView,
-        # UIFocusEnvironment...): no son codigo nuestro y no hay nada que curar.
+        # System types the Swift AST extracts as nodes (Bool, UIView,
+        # UIFocusEnvironment...): not our code, nothing to curate.
         if not n.get('source_file'):
             return False
         label = (n.get('label') or '').rstrip('()')
-        # Los archivos vecinos siempre entran: dan el contexto de donde vive el consumidor.
+        # Neighbor files always get in: they give the context of where the consumer lives.
         if label.endswith(('.js', '.swift')):
             return True
         if PARSER_ARTIFACT_RE.search(label):
@@ -295,7 +296,7 @@ def main():
 
     keep = seed_ids | neighbor_ids
 
-    # 3. Grados sobre el grafo COMPLETO (el impacto real, no el del subgrafo).
+    # 3. Degrees over the FULL graph (the real impact, not the subgraph's).
     in_deg, out_deg = Counter(), Counter()
     consumers, dependencies = defaultdict(list), defaultdict(list)
     for e in all_edges:
@@ -308,7 +309,7 @@ def main():
             if s in keep and t in all_nodes:
                 dependencies[s].append(all_nodes[t].get('label', '?'))
 
-    # 4. Curacion.
+    # 4. Curation.
     curation, meta = load_curation()
     used_keys = set()
 
@@ -328,29 +329,29 @@ def main():
             'out_degree': out_deg[nid],
             'impact': impact_of(in_deg[nid]),
             'is_core': nid in seed_ids,
-            # Es un ARCHIVO si su label lo es, o si su source_file apunta a un
-            # archivo entero (sin '::algo' detras). Mirar solo el label dejaba
-            # los PDFs como simbolo, porque el extractor guarda su stem. H-29.
+            # It's a FILE if its label is one, or if its source_file points to a
+            # whole file (with no trailing '::something'). Only looking at the label left
+            # PDFs marked as a symbol, because the extractor stores its stem. H-29.
             'kind': ('file' if (str(n.get('label', '')).endswith(FILE_SUFFIXES)
                                 or (str(n.get('source_file', '')).endswith(FILE_SUFFIXES)
                                     and '::' not in str(n.get('source_file', ''))))
                      else 'symbol'),
             'consumers': sorted(set(consumers[nid]))[:12],
             'dependencies': sorted(set(dependencies[nid]))[:12],
-            # Curado
+            # Curated
             'layer': cur.get('layer', 0),
             'what': cur.get('what', ''),
-            # issue: marca de falla, puesta a mano nodo por nodo en curation.yaml.
-            # NO se deduce del texto de los gotchas: si dependiera de encontrar una
-            # palabra clave, un gotcha escrito de otra forma dejaria de salir en el
-            # filtro y nadie se enteraria. Valores: 'bug' | 'duplicado' | 'muerto'.
+            # issue: defect flag, set by hand node by node in curation.yaml.
+            # NOT deduced from the gotchas text: if it depended on finding a
+            # keyword, a gotcha written differently would stop showing up in the
+            # filter and nobody would know. Values: 'bug' | 'duplicate' | 'dead'.
             'issue': cur.get('issue', ''),
-            'module_what': '',                   # que hace el archivo donde vive
+            'module_what': '',                   # what the file it lives in does
             'module_file': '',
-            'why': cur.get('why', ''),           # que problema resuelve
-            'ux': cur.get('ux', ''),             # que ve/siente el usuario en la TV
-            'when': cur.get('when', ''),         # cuando se ejecuta / quien lo dispara
-            'if_broken': cur.get('if_broken', ''),  # que se rompe si falla
+            'why': cur.get('why', ''),           # what problem it solves
+            'ux': cur.get('ux', ''),             # what the user sees/feels on TV
+            'when': cur.get('when', ''),         # when it runs / who triggers it
+            'if_broken': cur.get('if_broken', ''),  # what breaks if it fails
             'protected': cur.get('protected', ''),
             'flows': cur.get('flows', []),
             'cases': cur.get('cases', []),
@@ -358,24 +359,24 @@ def main():
         }
         nodes_out.append(node)
 
-    # Curacion huerfana: el nodo ya no existe en el AST -> la curacion mintio.
+    # Orphaned curation: the node no longer exists in the AST -> the curation lied.
     orphans = sorted(set(curation) - used_keys)
 
-    # Candidatos a issue:muerto por alcanzabilidad (Malavolta et al. 2023,
-    # "Lacuna", TSE — F-score 87.9% deteccion de codigo inalcanzable via
-    # componentes desconectados del nodo raiz). NO decide: solo reduce el
-    # espacio de busqueda del Paso 6. in_degree=0 sobre el GRAFO COMPLETO
-    # (no solo el subsistema) es la misma señal que Lacuna usa como muerto;
-    # 17.5% de falsos positivos en el paper (exports publicos, entry points)
-    # es demasiado para marcar solo, el humano sigue confirmando cada uno.
+    # Candidates for issue:dead by reachability (Malavolta et al. 2023,
+    # "Lacuna", TSE — 87.9% F-score detecting unreachable code via
+    # components disconnected from the root node). Doesn't decide: it only reduces
+    # the search space for Step 6. in_degree=0 over the WHOLE GRAPH
+    # (not just the subsystem) is the same signal Lacuna uses as dead;
+    # 17.5% false positives in the paper (public exports, entry points)
+    # is too many to flag alone, the human still confirms each one.
     dead_candidates = sorted(
         (n['label'] or n['id'] for n in nodes_out
          if n['kind'] == 'symbol' and n['in_degree'] == 0 and not n['issue']),
     )
 
-    # 5. Herencia archivo -> simbolo. El simbolo principal de un archivo curado
-    #    (useFocusPressable() en useFocusPressable.js) hereda su significado:
-    #    curar el archivo Y el hook por separado seria duplicar la misma verdad.
+    # 5. File -> symbol inheritance. A curated file's main symbol
+    #    (useFocusPressable() in useFocusPressable.js) inherits its meaning:
+    #    curating both the file AND the hook separately would duplicate the same truth.
     by_file = {n['source_file']: n for n in nodes_out if n['kind'] == 'file'}
     for n in nodes_out:
         parent = by_file.get(n['source_file'])
@@ -383,7 +384,7 @@ def main():
             continue
         if not n['layer']:
             n['layer'] = parent['layer']
-        # Solo el simbolo homonimo del archivo hereda el texto (el "main export").
+        # Only the symbol homonymous with the file inherits the text (the "main export").
         stem = Path(n['source_file']).name.split('.')[0].lower()
         if (n['label'] or '').rstrip('()').lower() == stem:
             for field in ('what', 'why', 'ux', 'when', 'if_broken', 'protected', 'issue'):
@@ -393,9 +394,9 @@ def main():
                 if not n[field]:
                     n[field] = list(parent[field])
 
-    # 5b. Un simbolo sin descripcion propia muestra la de su archivo como contexto:
-    #     no inventa nada, solo dice donde vive. La descripcion propia se escribe
-    #     a mano en curation.yaml leyendo el codigo — nunca se deriva del nombre.
+    # 5b. A symbol with no description of its own shows its file's as context:
+    #     it doesn't invent anything, it just says where it lives. Its own description
+    #     is written by hand in curation.yaml by reading the code — never derived from the name.
     for n in nodes_out:
         if n['what']:
             continue
@@ -406,7 +407,7 @@ def main():
 
     layer_of = {n['id']: n['layer'] for n in nodes_out}
 
-    # 6. Edges. layer_violation: la dependencia sube de capa (4 -> 1).
+    # 6. Edges. layer_violation: the dependency goes up a layer (4 -> 1).
     edges_out = []
     seen = set()
     for e in all_edges:
@@ -418,20 +419,20 @@ def main():
             continue
         seen.add(sig)
         ls, lt = layer_of.get(s, 0), layer_of.get(t, 0)
-        # Violacion: solo tiene sentido si el proyecto declaro una regla
-        # direccional (CHECK_LAYER_VIOLATIONS). Agrupar NO implica direccion:
-        #   - Atomic Design agrupa por composicion (un atomo no "usa" moleculas)
-        #   - REST / GraphQL / microservicios son categorias PARALELAS
-        #   - codificador / decodificador son pares simetricos
-        # En esos casos no hay nada que violar, y marcar violaciones produce
-        # alarmas sin significado. Con regla (hexagonal, capas), la sana baja:
-        # grupo 4 usa el 3, el 3 usa el 2. Lo que sube es la violacion.
+        # Violation: only makes sense if the project declared a
+        # directional rule (CHECK_LAYER_VIOLATIONS). Grouping does NOT imply direction:
+        #   - Atomic Design groups by composition (an atom doesn't "use" molecules)
+        #   - REST / GraphQL / microservices are PARALLEL categories
+        #   - encoder / decoder are symmetric pairs
+        # In those cases there's nothing to violate, and flagging violations produces
+        # meaningless alarms. With a rule (hexagonal, layers), healthy goes down:
+        # group 4 uses 3, 3 uses 2. What goes up is the violation.
         #
-        # El grupo 0 (transversal: logging, config, auth) queda exento: no
-        # pertenece a ningun grupo, cualquiera puede usarlo. Sin esta exencion,
-        # el 89% de las violaciones del caso original eran falsas (112 de 112).
+        # Group 0 (cross-cutting: logging, config, auth) is exempt: it
+        # belongs to no group, anyone can use it. Without this exemption,
+        # 89% of the original case's violations were false (112 of 112).
         #
-        # 'contains' es estructura del archivo, no una dependencia.
+        # 'contains' is file structure, not a dependency.
         violation = bool(
             CHECK_LAYER_VIOLATIONS
             and ls and lt and ls < lt
@@ -446,7 +447,7 @@ def main():
             'layer_violation': violation,
         })
 
-    # 7. Edges curados (lo que el AST no puede ver).
+    # 7. Curated edges (what the AST can't see).
     for key, cur in curation.items():
         for target_key in cur.get('curated_edges', []):
             src = next((n['id'] for n in nodes_out if curation_key_of(n) == key), None)
@@ -468,9 +469,9 @@ def main():
             'curated_nodes': len(used_keys),
             'orphan_curation': orphans,
             'dead_candidates': dead_candidates,
-            # El bloque meta: del curation.yaml. De aqui salen el titulo, las
-            # capas y la introduccion del visor. Nada del dominio vive en el
-            # HTML: asi la misma plantilla sirve para cualquier proyecto.
+            # curation.yaml's meta: block. The title, layers,
+            # and viewer introduction all come from here. Nothing domain-specific lives in
+            # the HTML: that way the same template serves any project.
             'layers': {k: v for k, v in meta.items() if k.startswith('layer_')},
             'intro': {k: v for k, v in meta.items() if not k.startswith('layer_')},
         },
@@ -481,53 +482,53 @@ def main():
 
     build_viewer(graph)
 
-    print(f"{OUT.name} -> {len(nodes_out)} nodos "
-          f"({len(seed_ids)} del subsistema + {len(neighbor_ids)} vecinos), {len(edges_out)} edges")
+    print(f"{OUT.name} -> {len(nodes_out)} nodes "
+          f"({len(seed_ids)} from the subsystem + {len(neighbor_ids)} neighbors), {len(edges_out)} edges")
     if len(nodes_out) > MAX_NODES_WARN:
-        print(f"\n  AVISO: {len(nodes_out)} nodos supera el limite recomendado ({MAX_NODES_WARN}).")
-        print("  El alcance es demasiado amplio y la curacion se hara inviable.")
-        print("  Reduce SEEDS antes de seguir - un grafo sin curar puede consumir")
-        print("  mas contexto que no tener grafo.")
+        print(f"\n  WARNING: {len(nodes_out)} nodes exceeds the recommended limit ({MAX_NODES_WARN}).")
+        print("  The scope is too broad and curation will become unviable.")
+        print("  Reduce SEEDS before continuing - an uncurated graph can consume")
+        print("  more context than having no graph at all.")
     viol = sum(1 for e in edges_out if e['layer_violation'])
-    print(f"curados: {len(used_keys)}/{len(curation)}" +
-          (f" | violaciones: {viol}" if CHECK_LAYER_VIOLATIONS else
-           " | violaciones: desactivadas (sin regla de dependencia)"))
-    print(f"index.html -> {VIEWER.stat().st_size // 1024} KB (autocontenido)")
+    print(f"curated: {len(used_keys)}/{len(curation)}" +
+          (f" | violations: {viol}" if CHECK_LAYER_VIOLATIONS else
+           " | violations: disabled (no dependency rule)"))
+    print(f"index.html -> {VIEWER.stat().st_size // 1024} KB (self-contained)")
     if orphans:
-        print(f"\n  AVISO: {len(orphans)} entradas de curation.yaml sin nodo en el AST.")
-        print("  El codigo cambio o la clave esta mal escrita:")
+        print(f"\n  WARNING: {len(orphans)} curation.yaml entries with no node in the AST.")
+        print("  The code changed or the key is misspelled:")
         for o in orphans:
             print(f"    - {o}")
     if dead_candidates:
-        print(f"\n  {len(dead_candidates)} candidatos a 'issue: muerto' por alcanzabilidad "
-              "(0 consumidores en todo el grafo, sin issue marcado aun):")
+        print(f"\n  {len(dead_candidates)} candidates for 'issue: dead' by reachability "
+              "(0 consumers across the whole graph, no issue flagged yet):")
         for d in dead_candidates[:20]:
             print(f"    - {d}")
         if len(dead_candidates) > 20:
-            print(f"    ... y {len(dead_candidates) - 20} mas.")
-        print("  NO son 'muerto' confirmado: revisalos en el Paso 6 antes de marcar.")
-        print("  Un export publico o entry point tambien da 0 consumidores.")
+            print(f"    ... and {len(dead_candidates) - 20} more.")
+        print("  These are NOT confirmed 'dead': review them in Step 6 before flagging.")
+        print("  A public export or entry point also gives 0 consumers.")
 
 
-# Los nodos ya construidos tienen la misma forma que los del AST para la clave,
-# asi que reutilizamos curation_key en vez de duplicar la normalizacion.
+# The nodes already built have the same shape as the AST's for the key,
+# so we reuse curation_key instead of duplicating the normalization.
 curation_key_of = curation_key
 
 
 def build_viewer(graph):
-    """Embebe el grafo en la plantilla -> index.html autocontenido.
+    """Embeds the graph in the template -> self-contained index.html.
 
-    Un solo archivo, sin CDN ni fetch: se abre con doble click y funciona
-    aunque se mueva de carpeta o se mande por correo.
+    A single file, no CDN or fetch: it opens with a double click and works
+    even if moved to a different folder or sent by email.
     """
     if not TEMPLATE.exists():
-        print(f'  aviso: falta {TEMPLATE.name}, no se genera el visor')
+        print(f'  warning: {TEMPLATE.name} missing, viewer not generated')
         return
     html = TEMPLATE.read_text(encoding='utf-8')
     payload = json.dumps(graph, ensure_ascii=False, separators=(',', ':'))
-    # </script> dentro del JSON cerraria el bloque antes de tiempo.
-    # El titulo se inyecta en el <head> al construir, no solo por JS: asi no hay
-    # parpadeo del generico ni dependencia de que el JS corra. Ver H-33.
+    # </script> inside the JSON would close the block early.
+    # The title is injected into the <head> at build time, not only via JS: that way there's no
+    # generic-title flash or dependency on the JS actually running. See H-33.
     titulo = (graph.get('meta', {}).get('intro') or {}).get('titulo')
     if titulo:
         html = re.sub(r'<title>.*?</title>',
@@ -536,22 +537,22 @@ def build_viewer(graph):
     payload = payload.replace('</', '<\\/')
     marker = '/*__GRAPH__*/{"nodes":[],"edges":[],"meta":{}}'
     if marker not in html:
-        print('  aviso: marcador __GRAPH__ no encontrado en la plantilla')
+        print('  warning: __GRAPH__ marker not found in the template')
         return
     VIEWER.write_text(html.replace(marker, payload), encoding='utf-8')
 
 
 def extract_ast():
-    """Extrae el AST de SRC_ROOT y de cada EXTRA_ROOT, y los fusiona.
+    """Extracts the AST from SRC_ROOT and each EXTRA_ROOT, and merges them.
 
-    Las raices extra existen para el codigo que vive fuera de la principal - el
-    caso tipico es un SDK nativo junto a un src/ de JavaScript. Se extraen aparte
-    porque cache_root fija el prefijo de source_file: cada una necesita el suyo
-    para que la curacion las referencie con la misma ruta que se ve en el repo.
+    Extra roots exist for code that lives outside the main one - the
+    typical case is a native SDK next to a JavaScript src/. They're extracted separately
+    because cache_root sets source_file's prefix: each one needs its own
+    so curation references them with the same path seen in the repo.
     """
     import subprocess
     extras = [(str(p), pref) for p, pref in EXTRA_ROOTS if p.exists()]
-    print(f'extrayendo AST de {SRC_ROOT}' + (f' + {len(extras)} raiz(ces) extra' if extras else ''))
+    print(f'extracting AST from {SRC_ROOT}' + (f' + {len(extras)} extra root(s)' if extras else ''))
     code = f'''
 import json
 from pathlib import Path
@@ -560,61 +561,61 @@ from graphify.extract import collect_files, extract
 SRC = Path(r"{SRC_ROOT}")
 EXTRAS = {extras!r}
 
-# La raiz principal: todo lo que graphify sepa parsear (25 lenguajes).
+# The main root: everything graphify knows how to parse (25 languages).
 files = collect_files(SRC)
 res = extract(files, cache_root=SRC)
-print(f"  {{SRC.name}}: {{len(res['nodes'])}} nodos")
+print(f"  {{SRC.name}}: {{len(res['nodes'])}} nodes")
 
-# Raices extra: cache_root se pone de forma que el source_file salga prefijado.
+# Extra roots: cache_root is set so source_file comes out prefixed.
 for path, prefix in EXTRAS:
     p = Path(path)
     extra_files = collect_files(p)
     if not extra_files:
         continue
-    # Subir tantos niveles como segmentos tenga el prefijo -> source_file = prefijo/archivo
+    # Go up as many levels as the prefix has segments -> source_file = prefix/file
     root = p
     for _ in range(len(Path(prefix).parts)):
         root = root.parent
     ex = extract(extra_files, cache_root=root)
     res["nodes"] += ex["nodes"]
     res["edges"] += ex["edges"]
-    print(f"  {{prefix}}: {{len(ex['nodes'])}} nodos")
+    print(f"  {{prefix}}: {{len(ex['nodes'])}} nodes")
 
 Path(r"{AST_RAW}").write_text(json.dumps(res, ensure_ascii=False))
-print(f"AST total: {{len(res['nodes'])}} nodos, {{len(res['edges'])}} edges")
+print(f"total AST: {{len(res['nodes'])}} nodes, {{len(res['edges'])}} edges")
 '''
     subprocess.run([str(GRAPHIFY_PY), '-c', code], check=True)
 
 
 def extract_docs():
-    """Extrae 'AST' de un corpus SIN codigo fuente: Markdown, JSON de citas/
-    registros, PDFs. Produce la misma forma {'nodes': [...], 'edges': [...]}
-    que extract_ast(), asi el resto del pipeline (blast-radius, curacion,
-    huerfanos, visor) no cambia una linea.
+    """Extracts an 'AST' from a corpus WITHOUT source code: Markdown, citation/
+    registry JSON, PDFs. Produces the same shape {'nodes': [...], 'edges': [...]}
+    as extract_ast(), so the rest of the pipeline (blast-radius, curation,
+    orphans, viewer) doesn't change a single line.
 
-    Que cuenta como nodo:
-      - Cada archivo .md: un nodo por archivo, mas un nodo por heading de
-        nivel 2 (##) si el archivo es largo (>1 heading) - igual que un
-        archivo de codigo puede dar un nodo de archivo + nodos de simbolo.
-      - Cada entrada de un JSON de registro (lista de objetos con 'id'): un
-        nodo por entrada. Pensado para el propio formato de
+    What counts as a node:
+      - Each .md file: one node per file, plus one node per level-2
+        heading (##) if the file is long (>1 heading) - same as a
+        code file can give a file node + symbol nodes.
+      - Each entry in a registry JSON (a list of objects with 'id'): one
+        node per entry. Designed for the same format as
         clasificacion_fuentes.json (id, titulo, relevancia_hueco...).
-      - Cada .pdf: un nodo (documento completo). No hay AST interno de un
-        PDF sin OCR/NLP - queda como nodo hoja, para curar a mano (what/why).
+      - Each .pdf: one node (the whole document). There's no internal AST for a
+        PDF without OCR/NLP - it stays as a leaf node, to be curated by hand (what/why).
 
-    Que cuenta como arista (SOLO referencias EXPLICITAS ya escritas, nunca
-    inferidas por similitud - inferir seria alucinar relaciones, H-01):
-      - Wikilinks [[id]] en Markdown -> edge hacia el nodo con ese id/archivo.
-      - Markdown links relativos [texto](otro.md) -> edge hacia ese archivo.
-      - Campo de lista declarado como relacion en el JSON (por defecto
-        'relevancia_hueco', 'relacionado_con', 'cita_a' - el primero que
-        exista) -> edge desde la entrada hacia cada valor de esa lista.
+    What counts as an edge (ONLY EXPLICIT references already written, never
+    inferred by similarity - inferring would mean hallucinating relations, H-01):
+      - Wikilinks [[id]] in Markdown -> edge to the node with that id/file.
+      - Relative Markdown links [text](other.md) -> edge to that file.
+      - List field declared as a relation in the JSON (by default
+        'relevancia_hueco', 'relacionado_con', 'cita_a' - whichever
+        exists first) -> edge from the entry to each value in that list.
     """
     import re as _re
 
     nodes, edges = [], []
-    id_to_node_id = {}  # id declarado (frontmatter, campo 'id') -> node id interno
-    path_to_node_id = {}  # ruta relativa -> node id interno (para links por archivo)
+    id_to_node_id = {}  # declared id (frontmatter, 'id' field) -> internal node id
+    path_to_node_id = {}  # relative path -> internal node id (for file-based links)
     next_id = [0]
 
     def new_id():
@@ -629,7 +630,7 @@ def extract_docs():
     json_files = [f for f in files if f.suffix == '.json']
     pdf_files = [f for f in files if f.suffix == '.pdf']
 
-    # 1. Markdown: un nodo por archivo, mas nodos por heading ## si hay varios.
+    # 1. Markdown: one node per file, plus nodes per ## heading if there are several.
     heading_re = _re.compile(r'^##\s+(.+)$', _re.MULTILINE)
     wikilink_re = _re.compile(r'\[\[([^\]]+)\]\]')
     mdlink_re = _re.compile(r'\[[^\]]*\]\(([^)]+\.md)\)')
@@ -663,10 +664,10 @@ def extract_docs():
                                'target': rel(target_path), 'relation': 'references',
                                'confidence': 'EXTRACTED', '_unresolved_target': True})
             except ValueError:
-                pass  # el link sale de DOCS_ROOT, no es referencia interna
+                pass  # the link goes outside DOCS_ROOT, not an internal reference
 
-    # 2. JSON de registro: cada entrada de una lista con 'id' es un nodo.
-    #    Pensado para clasificacion_fuentes.json (o cualquier {"fuentes": [...]}).
+    # 2. Registry JSON: each entry in a list with 'id' is a node.
+    #    Designed for clasificacion_fuentes.json (or any {"fuentes": [...]}).
     relation_field_candidates = ('relevancia_hueco', 'relacionado_con', 'cita_a', 'refs')
     for f in json_files:
         try:
@@ -691,7 +692,7 @@ def extract_docs():
                                    'relation': 'sustains', 'confidence': 'EXTRACTED',
                                    '_unresolved_target': True})
 
-    # 3. PDFs: un nodo por archivo, sin estructura interna. Se cura como nodo hoja.
+    # 3. PDFs: one node per file, no internal structure. Curated as a leaf node.
     for f in pdf_files:
         node_id = new_id()
         nodes.append({'id': node_id, 'label': f.stem[:80],
@@ -699,9 +700,9 @@ def extract_docs():
         path_to_node_id[rel(f)] = node_id
         path_to_node_id[f.stem] = node_id
 
-    # 4. Resolver targets de edges que se guardaron como id/ruta en vez de node_id.
-    #    Los que no resuelven a ningun nodo conocido se descartan (referencia
-    #    rota o a algo fuera del corpus) en vez de crear un nodo fantasma.
+    # 4. Resolve edge targets that were stored as an id/path instead of node_id.
+    #    Ones that don't resolve to any known node are dropped (broken
+    #    reference or something outside the corpus) instead of creating a phantom node.
     resolved_edges, conceptos, descartadas = [], {}, []
     for e in edges:
         if not e.pop('_unresolved_target', False):
@@ -713,43 +714,39 @@ def extract_docs():
             e['target'] = node_id
             resolved_edges.append(e)
         elif e['relation'] == 'sustains':
-            # Campo de relacion declarado en un JSON (relevancia_hueco y
-            # similares). El referente EXISTE y esta escrito - lo que no existe
-            # es un documento suyo. Materializarlo como nodo no infiere nada:
-            # dibuja la relacion tal y como el corpus la declara. Descartarlo
-            # (lo que hacia antes, en silencio) perdia el 100% de estas
-            # aristas y dejaba el grafo sin blast-radius. Ver H-29.
+            # Relation field declared in a JSON (relevancia_hueco and
+            # similar). The referent EXISTS and is written - what doesn't exist
+            # is a document of its own. Materializing it as a node doesn't infer anything:
+            # it draws the relation exactly as the corpus declares it. Dropping it
+            # (what it used to do, silently) lost 100% of these
+            # edges and left the graph with no blast-radius. See H-29.
             if tgt not in conceptos:
                 nid = new_id()
                 conceptos[tgt] = nid
                 nodes.append({'id': nid, 'label': tgt,
-                              'source_file': f'(referente declarado)::{tgt}',
+                              'source_file': f'(declared referent)::{tgt}',
                               'source_location': None})
             e['target'] = conceptos[tgt]
             resolved_edges.append(e)
         else:
-            # Wikilink o link relativo a algo que no existe: eso SI es una
-            # referencia rota, y se descarta en vez de inventar el destino.
+            # Wikilink or relative link to something that doesn't exist: that IS a
+            # broken reference, and it's dropped instead of inventing the destination.
             descartadas.append(tgt)
 
     res = {'nodes': nodes, 'edges': resolved_edges}
     AST_RAW.write_text(json.dumps(res, ensure_ascii=False), encoding='utf-8')
-    print(f"extraidos de {DOCS_ROOT}: {len(nodes)} nodos "
+    print(f"extracted from {DOCS_ROOT}: {len(nodes)} nodes "
           f"({len(md_files)} .md, {len(json_files)} .json, {len(pdf_files)} .pdf, "
-          f"{len(conceptos)} referentes declarados), "
-          f"{len(resolved_edges)} referencias resueltas")
+          f"{len(conceptos)} declared referents), "
+          f"{len(resolved_edges)} resolved references")
     if descartadas:
-        # Nunca en silencio: un descarte mudo hace que el grafo parezca completo.
+        # Never silently: a silent drop makes the graph look complete.
         muestra = ', '.join(sorted(set(descartadas))[:5])
-        print(f"  AVISO: {len(descartadas)} referencias descartadas (destino inexistente): {muestra}")
+        print(f"  WARNING: {len(descartadas)} dropped references (destination doesn't exist): {muestra}")
     if not resolved_edges:
-        print("  AVISO: 0 aristas. Si el corpus no tiene wikilinks/campos de relacion")
-        print("  explicitos, el grafo sera solo nodos sueltos - sigue sirviendo para")
-        print("  curar (what/why por documento) pero no para blast-radius.")
-    if not resolved_edges:
-        print("  AVISO: 0 aristas. Si el corpus no tiene wikilinks/campos de relacion")
-        print("  explicitos, el grafo sera solo nodos sueltos - sigue sirviendo para")
-        print("  curar (what/why por documento) pero no para blast-radius.")
+        print("  WARNING: 0 edges. If the corpus has no explicit wikilinks/relation")
+        print("  fields, the graph will be disconnected nodes only - still useful for")
+        print("  curation (what/why per document) but not for blast-radius.")
 
 
 if __name__ == '__main__':

@@ -1,0 +1,13 @@
+{
+  "name": "code-graph",
+  "description": "Builds a hybrid code graph for understanding a complex subsystem - AST extracts structure automatically, you read the code and curate meaning, and it renders as a self-contained HTML viewer.",
+  "author": {
+    "name": "Johan Sebastian Navarro Cano",
+    "email": "jcioweb@gmail.com",
+    "url": "https://github.com/jsnavarroc"
+  },
+  "homepage": "https://github.com/jsnavarroc/code-graph",
+  "repository": "https://github.com/jsnavarroc/code-graph",
+  "license": "MIT",
+  "keywords": ["code-graph", "architecture", "onboarding", "refactoring", "documentation", "ast"]
+}

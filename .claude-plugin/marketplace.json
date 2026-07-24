@@ -1,0 +1,12 @@
+{
+  "name": "code-graph",
+  "version": "1.0.0",
+  "owner": { "name": "Johan Sebastian Navarro Cano", "url": "https://github.com/jsnavarroc" },
+  "plugins": [
+    {
+      "name": "code-graph",
+      "source": ".",
+      "description": "Builds a hybrid code graph for understanding a complex subsystem - AST extracts structure automatically, you read the code and curate meaning, and it renders as a self-contained HTML viewer."
+    }
+  ]
+}

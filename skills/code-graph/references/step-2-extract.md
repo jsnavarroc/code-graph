@@ -101,9 +101,18 @@ human — see step-1-planning.md.)
 
 ## Running extraction
 
+This is the ONE time the AST runs. It maps the skeleton once; everything after —
+arranging, curating, assembling, updating — is by hand (no build tool). Run the
+extractor (graphify) directly to produce the raw node/edge JSON:
+
 ```bash
-python3 build.py --extract
+python3 -c "import graphify, json; json.dump(graphify.extract(SEED_PATHS, CACHE_DIR), open('ast-raw.json','w'))"
 ```
+
+`SEED_PATHS` are the subsystem paths from step-1-planning.md; `CACHE_DIR` must be
+an ABSOLUTE path OUTSIDE the graphed repo (see step-3-arrange.md — never let the
+cache land inside the code you're mapping). Then the agent arranges that raw JSON
+into `data.json` by hand (step-3-arrange.md).
 
 Report to the human, in these terms:
 

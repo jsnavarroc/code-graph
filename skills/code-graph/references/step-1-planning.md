@@ -4,7 +4,9 @@ This step prevents redoing work. The answers come from the human; you explore th
 code and **suggest**. Never decide for them: a badly grouped graph lies on every
 query, and the 112 false violations from the original case came from right here.
 
-Five written answers come out of this that feed into build.py's CONFIG.
+Five written answers come out of this: the seeds and scope that the AST
+extractor reads once (step-2-extract.md), and the grouping/rule/noise decisions
+the agent applies by hand afterward.
 
 ## Contents
 - 1. What is the subsystem and what are its seeds?

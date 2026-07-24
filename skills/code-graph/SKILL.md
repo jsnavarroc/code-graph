@@ -54,6 +54,13 @@ Create a todo for each step. Each step below is a summary; the linked file has t
 full procedure, the `<CRITICAL>` details, and the real-use lessons. Read the
 step's file when you reach it — one level deep, so it loads complete.
 
+**The AST runs ONCE (Step 2), to map the skeleton. Everything after — arranging,
+curating, assembling, updating — is by hand. There is no build tool driving the
+graph; a leftover `build.py` in an old graph folder is scaffolding, not the
+motor.** If the graph already exists and you only need to catch it up to code or
+curation changes, don't run these 8 steps — see
+**[updating-an-existing-graph.md](references/updating-an-existing-graph.md)**.
+
 ### Step 1 — Plan (with the human, before touching anything)
 
 Six written answers: subsystem + seeds, grouping criterion (explore, search the

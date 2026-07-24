@@ -10,6 +10,7 @@ or wastes it.
 - `character` — what type of thing it is
 - `why` has no fixed format — ask the human first
 - What a good description looks like
+- Mechanics vs role: the `when` a node earns its place
 - What to look for while reading
 - The other fields
 - File -> symbol inheritance
@@ -38,7 +39,7 @@ sense of coverage.
 | `what` | What it does, concretely | No |
 | `why` | What problem it solves ← **the most valuable** | Never |
 | `ux` | What whoever uses it sees or feels | Never |
-| `when` | When it runs, who triggers it | Partial |
+| `when` | When it runs, who triggers it, what decision depends on it ← **mandatory for any node with timing** | Partial |
 | `if_broken` | What breaks if it fails | No |
 
 Also: `protected`, `gotchas`, `issue`, `cases` (see "The other fields" below) —
@@ -243,6 +244,43 @@ That isn't found anywhere except in the unit itself.
 
 ---
 
+## Mechanics vs role: the `when` a node earns its place
+
+<CRITICAL>
+A description can be technically correct and still useless, because it says WHAT
+the unit does mechanically but not WHEN it runs, WHO triggers it, and WHAT
+decision downstream depends on its result. Mechanics tell you the code; the role
+tells you the flow. The graph exists for the flow.
+
+For any node with timing — it runs on an event, at a point in a lifecycle, or its
+output gates a later decision — `when` is MANDATORY, not optional.
+</CRITICAL>
+
+Take a unit that checks whether a session is still alive against a remote store.
+
+**Mechanics only** (correct, but flat):
+> **what**: Reads the session record from the remote store and returns whether it
+> still exists.
+
+That's true and tells you nothing about why it matters. The reader still has to
+open every caller to learn when it runs and what hangs on the answer.
+
+**Role in the flow** (what makes the graph worth having):
+> **what**: Reads the session record from the remote store and returns whether it
+> still exists.
+>
+> **when**: Runs every time the user reopens the app, before any screen mounts.
+> Its boolean is the gate for the expired-session modal: `false` -> show the modal
+> and send the user back to sign-in; `true` -> continue silently. Nothing else
+> decides whether that modal appears.
+
+The second one answers the three questions a caller would otherwise open five
+files to reconstruct: **when** (on reopen, pre-mount), **who** (the startup
+sequence), **what depends on it** (the modal + the redirect). Write `when` like
+that — a trigger, a moment, and the decision it drives — not "called by X".
+
+---
+
 ## What to look for while reading
 
 What makes a node valuable is almost always one of these five:
@@ -335,8 +373,11 @@ prior review is that mitigation.
 
 Every 15-20 units:
 
-1. `python3 build.py`
-2. Fix orphaned curation if there is any
+1. Re-assemble the viewer by hand (string-replace the markers — see
+   step-3-arrange.md). No `build.py`: the AST already mapped the skeleton once;
+   everything after that is by hand.
+2. Check for orphaned curation — any `file` key in the curation whose file no
+   longer exists on disk — and fix it before continuing.
 3. Show the human 2-3 descriptions and ask if the level is right
 
 That last step is what saves the work. Detecting late that the curation

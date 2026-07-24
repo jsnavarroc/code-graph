@@ -6,6 +6,15 @@ query, and the 112 false violations from the original case came from right here.
 
 Five written answers come out of this that feed into build.py's CONFIG.
 
+## Contents
+- 1. What is the subsystem and what are its seeds?
+- 2. How are nodes grouped? (explore and suggest)
+- 3. Is there a dependency rule to watch? (optional)
+- 4. What's cross-cutting? (group 0)
+- 4b. How are edges connected when there's ambiguity? (`docs` mode only)
+- 5. What's noise?
+- Output of this step
+
 ---
 
 ## 1. What is the subsystem and what are its seeds?

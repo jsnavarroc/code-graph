@@ -4,6 +4,17 @@ Curating = reading the whole unit and writing what it means. It's the half of th
 graph the AST can't provide, and the one that determines whether the graph saves context
 or wastes it.
 
+## Contents
+- The rule that governs everything
+- The fields
+- `character` — what type of thing it is
+- `why` has no fixed format — ask the human first
+- What a good description looks like
+- What to look for while reading
+- The other fields
+- File -> symbol inheritance
+- The pace
+
 ---
 
 ## The rule that governs everything

@@ -33,13 +33,19 @@ iterations, or any parallel code change.
 BEFORE closing the curation session -> not after each file, but at the end of
 the work batch, once, as the last thing before you sign off.
 
-```bash
-python3 build.py --extract
-```
+The AST mapped the skeleton ONCE, at the start. Maintenance is NOT re-running a
+build tool — it's checking, by hand, whether the ground the curation stands on
+has moved. Two by-hand checks:
 
-`--extract` re-reads the real code from disk, not the cache. That's the whole
-point: you're asking whether the ground the curation stands on has moved since
-you last looked.
+1. **Skeleton drift** — re-run the AST extractor (graphify) directly ONLY if you
+   suspect the code changed structurally (files added/removed/renamed). Compare
+   the fresh node/edge set against `data.json`; add or drop nodes/edges by hand
+   (additive for curation — never regenerate it). If the code did NOT change,
+   skip this — the skeleton is still valid.
+2. **Curation drift** — the checklist below, done by reading, not by any tool.
+
+There is no `build.py` step here. Re-assembling the viewer is the marker
+string-replace from step-3-arrange.md.
 
 ---
 

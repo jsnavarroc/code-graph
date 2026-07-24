@@ -15,19 +15,20 @@ human. None of them substitutes for the next.
 
 ---
 
-## Regenerate clean first
+## Re-assemble clean first
 
-Before verifying anything, regenerate from the current source of truth. Don't
-inspect a stale artifact.
+Before verifying anything, re-assemble the viewer from the current source of
+truth. Don't inspect a stale artifact.
 
-```bash
-python3 build.py --extract
-```
+The AST mapped the skeleton once; everything after is by hand. So re-assembly is
+a plain string-replace of the template markers with the current `data.json` and
+`curation.json` (see step-3-arrange.md) — NOT re-running a build tool. What you
+verify must be exactly what shipping would produce, from the current JSON, not
+from an older copy someone edited by hand.
 
-If the viewer was hand-assembled instead of generated, re-assemble it from the
-current JSON — not from an older copy someone edited by hand. What you verify
-must be exactly what shipping would produce, or the verification is about a
-different file than the one that ships.
+Only re-run the AST extractor (graphify) if the underlying CODE changed since the
+skeleton was mapped — and even then, only to refresh nodes/edges, never to
+regenerate the curation (that's hand-written and additive-only).
 
 <IMPORTANT>
 Every fix you make in this step goes in the SOURCE — the JSON, the curation,

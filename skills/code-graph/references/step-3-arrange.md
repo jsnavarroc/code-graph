@@ -66,10 +66,12 @@ The division of labor:
   the HTML     -> shows
 </CRITICAL>
 
-`build.py` is a convenience, not a dependency. If it works and doesn't fight you, use
-it. The moment any of its three parts (parser, template, cache path) costs more to
-wrestle than to bypass, bypass it — the agent can produce the same viewer from the
-same JSON.
+The default is by hand: the agent produces the viewer from the JSON with a plain
+marker replace. A `build.py` renderer is at most an optional convenience for the
+one-time initial render — its parser, template, and cache path are the three
+parts that fought hardest in real use, which is why the skeleton, once extracted
+to JSON, is all you actually need. For any UPDATE to an existing graph, do not use
+it at all (see updating-an-existing-graph.md).
 
 ---
 

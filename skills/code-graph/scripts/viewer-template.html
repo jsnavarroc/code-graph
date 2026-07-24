@@ -2,765 +2,333 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- Neutro a proposito: el titulo real lo pone meta.titulo de curation.yaml. Ver H-33. -->
-<title>Grafo de codigo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>__TITLE__</title>
 <style>
-  *{margin:0;padding:0;box-sizing:border-box}
   :root{
-    --bg:#0f1117; --surface:#171a24; --surface2:#1f2330; --border:#2b3145;
-    --text:#e4e6ef; --text2:#9096ad; --text3:#5d6478;
-    --l1:#ff6b6b; --l2:#cc5de8; --l3:#6c8cff; --l4:#51cf66; --l0:#5d6478;
-    --warn:#ffa94d; --violation:#ff4757;
+    --bg:#0d0f14; --surface:#161923; --surface2:#1c2030; --border:#252a3a;
+    --text:#e6e8ec; --text2:#9aa3b2; --text3:#6b7280; --hc:#845ef7;
+    --l0:#5d6478; --l1:#845ef7; --l2:#ff6b6b; --l3:#fab005;
+    --l4:#20c997; --l5:#4dabf7; --l6:#e64980; --l7:#868e96;
   }
-  body{font:13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-    background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column}
-
-  /* ── Barra superior ── */
-  .top{display:flex;align-items:center;gap:14px;padding:10px 16px;background:var(--surface);
-    border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
-  .brand{font-weight:700;font-size:13px;letter-spacing:.2px}
-  .brand span{color:var(--text3);font-weight:400;margin-left:8px;font-size:11px}
-  .search{flex:1;min-width:180px;max-width:340px;position:relative}
-  .search input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;
-    padding:7px 11px;color:var(--text);font-size:12.5px;outline:none}
-  .search input:focus{border-color:var(--l3)}
-  .results{position:absolute;top:38px;left:0;right:0;background:var(--surface2);border:1px solid var(--border);
-    border-radius:7px;max-height:320px;overflow-y:auto;z-index:60;display:none;box-shadow:0 12px 32px rgba(0,0,0,.5)}
-  .results.on{display:block}
-  .r-item{padding:7px 11px;cursor:pointer;border-bottom:1px solid var(--border);font-size:12px}
-  .r-item:last-child{border-bottom:none}
-  .r-item:hover,.r-item.sel{background:var(--l3);color:#fff}
-  .r-item .rf{font-size:10px;color:var(--text3);margin-top:1px}
-  .r-item:hover .rf,.r-item.sel .rf{color:rgba(255,255,255,.75)}
-
-  .filters{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-  .fl{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-right:2px}
-  .chip{background:var(--surface2);border:1px solid var(--border);color:var(--text2);
-    padding:4px 9px;border-radius:20px;cursor:pointer;font-size:11px;user-select:none;transition:.12s;white-space:nowrap}
-  .chip:hover{border-color:var(--text3)}
-  .chip.on{color:#fff;border-color:transparent}
-  .chip.on[data-layer="1"]{background:var(--l1)} .chip.on[data-layer="2"]{background:var(--l2)}
-  .chip.on[data-layer="3"]{background:var(--l3)} .chip.on[data-layer="4"]{background:var(--l4)}
-  .chip.on[data-layer="0"]{background:var(--l0)}
-  .chip.on[data-rel]{background:var(--surface2);border-color:var(--l3);color:var(--text)}
-  .chip.on[data-flag]{background:var(--warn);color:#1a1a1a;font-weight:600}
-  .chip-issue{border-color:var(--violation);color:#ff8b95}
-  .chip-issue.on{background:var(--violation);color:#fff;border-color:transparent}
-  /* Halo de falla: late despacio para que se vea sin marear. */
-  .halo{animation:haloPulse 2.4s ease-in-out infinite}
-  @keyframes haloPulse{0%,100%{opacity:.75}50%{opacity:.3}}
-  .node.issue text{fill:var(--text);opacity:1}
-  .btn{background:var(--surface2);border:1px solid var(--border);color:var(--text2);
-    padding:5px 10px;border-radius:6px;cursor:pointer;font-size:11px}
-  .btn:hover{border-color:var(--l3);color:var(--text)}
-
-  /* ── Cuerpo ── */
-  .body{flex:1;display:flex;overflow:hidden}
-  .canvas{flex:1;position:relative;overflow:hidden;background:
-    radial-gradient(circle at 30% 20%,rgba(108,140,255,.05),transparent 55%),var(--bg)}
-  /* Acotado a #svg a proposito: sin el selector, esta regla tambien se aplicaba
-     a los iconos <svg> de la leyenda y los estiraba hasta llenar su caja (el CSS
-     gana a los atributos width/height del elemento). Ver H-33. */
-  #svg{width:100%;height:100%;display:block;cursor:grab}
-  svg.drag{cursor:grabbing}
-
-  .lane-bg{fill:rgba(255,255,255,.014)}
-  .lane-line{stroke:var(--border);stroke-width:1;stroke-dasharray:3 5}
-  .lane-label{font:700 10px -apple-system,sans-serif;letter-spacing:1.4px;text-transform:uppercase}
-  .lane-sub{font:9px -apple-system,sans-serif;fill:var(--text3)}
-
-  .edge{fill:none;stroke-linecap:round}
-  .node{cursor:grab}
-  .node.grabbing{cursor:grabbing}
-  .node.grabbing circle{stroke:#fff;stroke-width:2.5}
-  .node circle{stroke-width:1.5;transition:opacity .12s}
-  .node text{font:10px -apple-system,sans-serif;fill:var(--text2);pointer-events:none;
-    text-anchor:middle;paint-order:stroke;stroke:var(--bg);stroke-width:3px;stroke-linejoin:round}
-  .node.big text{font-size:11px;fill:var(--text);font-weight:600}
-  /* Etiquetas de nodos secundarios: solo al pasar el raton, para no encimarse. */
-  .node text.onhover{opacity:0;transition:opacity .1s}
-  .node:hover text.onhover{opacity:1;fill:var(--text)}
-  .node:hover circle{stroke:#fff;stroke-width:2}
-  .node.hl text.onhover{opacity:1;fill:var(--text)}
-  .dim{opacity:.06}
-  .dim text{opacity:0}
-  .hl circle{stroke:#fff;stroke-width:2.5}
-
-  /* ── Panel ── */
-  .panel{width:330px;background:var(--surface);border-left:1px solid var(--border);
-    overflow-y:auto;padding:16px;flex-shrink:0}
-  .panel.empty{display:flex;align-items:center;justify-content:center;text-align:center;color:var(--text3);font-size:12px}
-  .p-label{font-size:9px;text-transform:uppercase;letter-spacing:1.1px;color:var(--text3);
-    margin:15px 0 5px;font-weight:700}
-  .p-label:first-child{margin-top:0}
-  .p-title{font-size:16px;font-weight:700;word-break:break-word;line-height:1.3}
-  .p-file{font:10.5px 'SF Mono',Menlo,monospace;color:var(--text3);margin-top:4px;word-break:break-all}
-  .p-badges{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}
-  .badge{font-size:9.5px;padding:2.5px 7px;border-radius:4px;font-weight:700;letter-spacing:.3px}
-  .b-CRITICO{background:var(--l1);color:#fff} .b-ALTO{background:var(--warn);color:#1a1a1a}
-  .b-MEDIO{background:var(--l3);color:#fff} .b-BAJO{background:var(--surface2);color:var(--text2)}
-  .b-HOJA{background:var(--surface2);color:var(--text3)}
-  .b-layer{color:#fff}
-  .b-prot{background:transparent;border:1px solid var(--warn);color:var(--warn)}
-  .p-what{background:var(--surface2);border-radius:7px;padding:10px;font-size:12px;
-    line-height:1.62;color:var(--text)}
-  /* El "por que" es lo que un dev nuevo necesita primero: se destaca. */
-  .p-why{background:rgba(108,140,255,.09);border-left:2px solid var(--l3);
-    border-radius:0 7px 7px 0;padding:10px 11px;font-size:12px;line-height:1.65;color:#c8d4f5}
-  /* El UX traduce el problema tecnico a lo que pasa en la pantalla del salon. */
-  .p-ux{background:rgba(81,207,102,.08);border-left:2px solid var(--l4);
-    border-radius:0 7px 7px 0;padding:10px 11px;font-size:12px;line-height:1.65;color:#bce6c6}
-  .p-when{background:var(--surface2);border-radius:7px;padding:9px 10px;
-    font-size:11.5px;line-height:1.55;color:var(--text2)}
-  .p-broken{background:rgba(255,71,87,.08);border-left:2px solid var(--violation);
-    border-radius:0 7px 7px 0;padding:9px 11px;font-size:11.5px;line-height:1.55;color:#f5c2c7}
-  .p-intro{background:var(--surface2);border-radius:7px;padding:11px;font-size:11.5px;
-    line-height:1.7;color:var(--text2);margin-bottom:14px}
-  .p-intro b{color:var(--text);display:block;margin-bottom:5px;font-size:12px}
-  .p-layer-note{font-size:11px;color:var(--text2);line-height:1.55;
-    background:var(--surface2);border-radius:6px;padding:8px 10px}
-  /* Contexto heredado del archivo: no es del simbolo, se marca como tal. */
-  .p-module{background:var(--surface2);border-radius:7px;padding:9px 10px;
-    font-size:11.5px;line-height:1.6;color:var(--text2);border-left:2px solid var(--border)}
-  .p-module-file{display:block;font:10px 'SF Mono',Menlo,monospace;
-    color:var(--text3);margin-bottom:4px}
-  .p-stats{display:flex;gap:8px;margin-top:10px}
-  .stat{flex:1;background:var(--surface2);border-radius:7px;padding:9px;text-align:center}
-  .stat b{display:block;font-size:19px;line-height:1.1}
-  .stat span{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}
-  .p-list{list-style:none;font-size:11.5px}
-  .p-list li{padding:4px 0 4px 11px;border-left:2px solid var(--border);color:var(--text2);
-    margin-bottom:2px;cursor:pointer;word-break:break-word}
-  .p-list li:hover{border-left-color:var(--l3);color:var(--text)}
-  .p-gotcha{background:rgba(255,169,77,.08);border-left:2px solid var(--warn);
-    padding:8px 10px;font-size:11.5px;line-height:1.55;color:#f0d9b8;margin-bottom:5px;border-radius:0 5px 5px 0}
-  .p-case{display:inline-block;background:var(--surface2);border:1px solid var(--border);
-    color:var(--text2);font:10px 'SF Mono',Menlo,monospace;padding:3px 7px;border-radius:4px;margin:0 4px 4px 0}
-  .p-flow{display:inline-block;background:rgba(108,140,255,.14);color:var(--l3);
-    padding:3px 8px;border-radius:20px;font-size:10.5px;margin:0 4px 4px 0;font-weight:600}
-
-  /* ── Leyenda ── */
-  .legend{position:absolute;left:12px;bottom:12px;background:rgba(23,26,36,.94);
-    border:1px solid var(--border);border-radius:8px;padding:9px 11px;font-size:10px;
-    color:var(--text2);backdrop-filter:blur(8px);pointer-events:none;line-height:1.85;
-    /* width:max-content + nowrap: sin esto el texto que sigue al <svg> es un item
-       flex anonimo, se parte en varias lineas y se sale de la caja. */
-    width:max-content;max-width:280px}
-  .legend b{color:var(--text);font-size:9px;text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:4px}
-  .lg-row{display:flex;align-items:center;gap:6px;white-space:nowrap;min-height:16px}
-  /* Tamano explicito ademas de los atributos: cinturon y tirantes por si alguna
-     regla de svg vuelve a colarse. */
-  .lg-row > svg{flex:0 0 auto;width:20px;height:14px}
-  .lg-row[hidden]{display:none}
-  .lg-k{color:var(--text3)}
-  .lg-line{width:20px;height:0;border-top:2px solid var(--text3);flex-shrink:0}
-  .lg-line.dash{border-top-style:dashed}
-  .lg-line.viol{border-top-color:var(--violation);border-top-width:2.5px}
-  .hint{position:absolute;right:12px;bottom:12px;font-size:10px;color:var(--text3);
-    background:rgba(23,26,36,.9);padding:5px 9px;border-radius:6px;pointer-events:none}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:14px;line-height:1.5}
+  .layout{display:flex;height:100vh}
+  main{flex:1;overflow-y:auto;padding:24px 28px;position:relative}
+  #edges{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1;overflow:visible}
+  #edges path{fill:none;stroke:var(--border);stroke-width:1.2;opacity:.3;transition:.15s}
+  #edges path.hi-out{stroke:var(--hc);stroke-width:2;opacity:.95}
+  #edges path.hi-in{stroke:var(--hc);stroke-width:1.6;opacity:.7;stroke-dasharray:4 3}
+  #edges path.dim{opacity:.04}
+  .content{position:relative;z-index:2}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--text2);font-size:13px;margin-bottom:8px}
+  .hint{color:var(--text3);font-size:11.5px;margin-bottom:18px}
+  .hint b{color:var(--text2)}
+  .lane{margin-bottom:20px;border-left:3px solid var(--lc);padding-left:14px}
+  .lane-h{font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;color:var(--lc);margin-bottom:2px}
+  .lane-sub{color:var(--text3);font-size:11.5px;margin-bottom:10px}
+  .nodes{display:flex;flex-wrap:wrap;gap:8px}
+  .node{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;cursor:pointer;transition:.12s;min-width:0;position:relative}
+  .node:hover{border-color:var(--lc);background:var(--surface2)}
+  .node.sel{border-color:var(--lc);background:var(--surface2);box-shadow:0 0 0 2px var(--lc)}
+  .node.neigh-out{border-color:var(--hc)}
+  .node.neigh-in{border-color:var(--hc);border-style:dashed}
+  .node.faded{opacity:.28}
+  .node .lbl{font-family:"SFMono-Regular",Menlo,monospace;font-size:12.5px}
+  .node .deg{color:var(--text3);font-size:10.5px;margin-top:2px}
+  aside{width:390px;border-left:1px solid var(--border);background:var(--surface);overflow-y:auto;padding:22px 20px;z-index:3}
+  .p-empty{color:var(--text3);font-size:13px;line-height:1.7}
+  .p-file{font-family:monospace;font-size:11px;color:var(--text3);word-break:break-all;margin-bottom:12px}
+  .p-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:14px 0 4px}
+  .p-val{font-size:13.5px;line-height:1.6}
+  .p-deg{display:flex;gap:16px;margin:10px 0 4px}
+  .p-deg span{font-size:12px;color:var(--text2)}
+  .p-deg b{color:var(--text);font-size:15px}
+  .badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;background:var(--lc);color:#0d0f14}
+  .rel{font-size:12px;color:var(--text2);margin:3px 0;cursor:pointer}
+  .rel:hover{color:var(--text)}
+  .rel .arrow{color:var(--text3);font-family:monospace}
+  .rel .rt{color:var(--text3);font-size:10px;margin-left:4px}
+  .warn{background:#2a1e14;border-left:3px solid var(--l3);padding:10px 12px;border-radius:6px;font-size:12.5px;margin-top:16px;color:#ffd8a8}
+  .clr{float:right;font-size:11px;color:var(--text3);cursor:pointer;border:1px solid var(--border);border-radius:5px;padding:2px 8px}
+  .clr:hover{color:var(--text)}
+  .searchbar{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  #search{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:9px 12px;outline:none}
+  #search:focus{border-color:var(--l1)}
+  .scount{font-size:11.5px;color:var(--text3);white-space:nowrap}
+  .cbox{font-size:11.5px;color:var(--text2);display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap}
+  .results{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+  .results:empty{display:none}
+  .rchip{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;cursor:pointer;font-family:"SFMono-Regular",Menlo,monospace;font-size:12px;display:flex;align-items:center;gap:6px}
+  .rchip:hover{border-color:var(--l1)}
+  .rchip .rlayer{width:8px;height:8px;border-radius:2px}
+  .rchip .rfile{color:var(--text3);font-size:10px}
+  .node .dot{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:#3a4152}
+  .node.curated .dot{background:#20c997}
+  .node.hit{outline:2px solid var(--l1);outline-offset:1px}
+  .node.hidden{display:none}
+  .filterbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .fl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)}
+  .fchip{font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text3);cursor:pointer;display:inline-flex;align-items:center;gap:5px;user-select:none}
+  .fchip.on{color:var(--text);border-color:var(--fc);background:color-mix(in srgb, var(--fc) 16%, var(--surface))}
+  .fchip .fdot{width:8px;height:8px;border-radius:2px;background:var(--fc)}
+  .fchip:not(.on) .fdot{opacity:.3}
+  .btn{font-size:11px;padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text3);cursor:pointer}
+  .btn:hover{color:var(--text);border-color:var(--l1)}
+  .lane.hidden{display:none}
 </style>
 </head>
 <body>
-
-<div class="top">
-  <div class="brand">Navegacion y Foco <span id="meta"></span></div>
-  <div class="search">
-    <input id="q" placeholder="Buscar nodo, archivo, flujo o caso…" autocomplete="off">
-    <div class="results" id="res"></div>
-  </div>
-  <div class="filters">
-    <span class="fl">Capas</span>
-    <div class="chip on" data-layer="1">1·SDK</div>
-    <div class="chip on" data-layer="2">2·Estado</div>
-    <div class="chip on" data-layer="3">3·Validacion</div>
-    <div class="chip on" data-layer="4">4·Contenido</div>
-    <div class="chip on" data-layer="0">Vecinos</div>
-  </div>
-  <div class="filters">
-    <span class="fl">Edges</span>
-    <div class="chip on" data-rel="calls">calls</div>
-    <div class="chip on" data-rel="imports">imports</div>
-    <div class="chip on" data-rel="contains">contains</div>
-    <div class="chip on" data-rel="other">otros</div>
-  </div>
-  <div class="filters">
-    <div class="chip chip-issue" data-flag="issue">⚠ Fallas</div>
-    <div class="chip" data-flag="violation">Solo violaciones</div>
-    <button class="btn" id="relayout" title="Devuelve los nodos movidos a su sitio">Reordenar</button>
-    <button class="btn" id="reset">Reset</button>
-  </div>
-</div>
-
-<div class="body">
-  <div class="canvas">
-    <svg id="svg"></svg>
-    <div class="legend">
-      <b>Como leerlo</b>
-      <div class="lg-row"><span class="lg-k">Posicion vertical</span> = <span id="lg-eje">grupo</span></div>
-      <div class="lg-row"><span class="lg-k">Tamano</span> = <span id="lg-tam">impacto</span></div>
-      <div class="lg-row">
-        <svg width="20" height="14">
-          <circle cx="10" cy="7" r="3.5" fill="#6c8cff"/>
-          <circle cx="10" cy="7" r="6" fill="none" stroke="rgba(255,255,255,.55)"
-                  stroke-width="1" stroke-dasharray="2 2.5"/>
-        </svg> Descripcion escrita a mano
+<div class="layout">
+  <main>
+    <svg id="edges"></svg>
+    <div class="content">
+      <h1>__TITLE__</h1>
+      <div class="sub">__SUBTITLE__</div>
+      <div class="hint">Las lineas son las dependencias reales entre nodos. Click en un nodo: <b>solidas</b> = lo que ese nodo usa, <b>punteadas</b> = quien lo usa.</div>
+      <div class="searchbar">
+        <input id="search" type="text" placeholder="Buscar nodo por nombre o archivo…" autocomplete="off">
+        <span id="searchcount" class="scount"></span>
+        <label class="cbox"><input type="checkbox" id="onlyuncurated"> solo sin curar</label>
       </div>
-      <div class="lg-row" id="lg-viol" hidden><span class="lg-line viol"></span> Violacion de dependencia</div>
-      <div class="lg-row" id="lg-issue" hidden>
-        <svg width="20" height="14">
-          <circle cx="10" cy="7" r="6.5" fill="#ff4757" fill-opacity=".45"/>
-          <circle cx="10" cy="7" r="3.5" fill="#6c8cff"/>
-        </svg> <span id="lg-issue-txt">Falla</span>
+      <div class="filterbar">
+        <span class="fl">Capas</span>
+        <span id="layerchips"></span>
+        <span class="fl" style="margin-left:14px">Aristas</span>
+        <span id="relchips"></span>
+        <span class="btn" id="resetfilters">Reset</span>
       </div>
+      <div id="results" class="results"></div>
+      <div id="lanes"></div>
     </div>
-    <div class="hint">Rueda = zoom · Arrastrar nodo = recolocar · Arrastrar fondo = mover · Click = detalle</div>
-  </div>
-  <div class="panel" id="panel"></div>
+  </main>
+  <aside id="panel">
+    <div class="p-empty" id="panel-empty">Selecciona un nodo para ver su rol y resaltar sus conexiones.</div>
+  </aside>
 </div>
 
+<script id="data" type="application/json">__DATA__</script>
+<script id="curation" type="application/json">__CURATION__</script>
 <script>
-const GRAPH = /*__GRAPH__*/{"nodes":[],"edges":[],"meta":{}};
+const DATA = JSON.parse(document.getElementById('data').textContent);
+const CUR = JSON.parse(document.getElementById('curation').textContent);
+// Las capas vienen de meta (una por grupo del Paso 4). Cada {id, name, sub}.
+// El color se asigna por indice desde la paleta, no fijo — asi sirve con cualquier
+// numero de capas. NADA especifico de un proyecto se hardcodea aqui (ver Paso 7b).
+const LAYER_PALETTE = ['--l0','--l1','--l2','--l3','--l4','--l5','--l6','--l7'];
+const LAYERS = (__LAYERS__).map((l, i) => ({ ...l, c: LAYER_PALETTE[i % LAYER_PALETTE.length] }));
+const byId = Object.fromEntries(DATA.nodes.map(n=>[n.id,n]));
+const layerColor = id => `var(${(LAYERS.find(l=>l.id===id)||LAYERS[0]).c})`;
+const esc = s => String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+// Nombres genericos (index.js, styles.js...) no dicen a que se refieren: los prefijamos con la carpeta padre.
+const GENERIC = new Set(['index.js','index.ios.js','index.android.js','styles.js','package.json','actions.js','reducer.js']);
+const displayLabel = n => {
+  if(!GENERIC.has(n.label)) return n.label;
+  const parts = n.file.split('/');
+  const parent = parts.length>=2 ? parts[parts.length-2] : '';
+  return parent ? `${parent}/${n.label}` : n.label;
+};
+const nodeEls = {};
+const outMap = {}, inMap = {};
+DATA.edges.forEach(e=>{ (outMap[e.s]=outMap[e.s]||[]).push(e); (inMap[e.t]=inMap[e.t]||[]).push(e); });
 
-// Las capas salen del bloque meta: del curation.yaml del proyecto, no de aqui.
-// Formato esperado por capa:  layer_N: Nombre - descripcion corta
-// Nada del dominio vive en esta plantilla: asi sirve para cualquier proyecto.
-const LAYER_COLORS = ['#ff6b6b', '#cc5de8', '#6c8cff', '#51cf66', '#4ecdc4', '#ffa94d'];
-
-// Textos del proyecto. TODO sale del bloque meta: de curation.yaml - nada del
-// dominio vive en este HTML, para que la misma plantilla sirva a cualquier
-// proyecto. Ver H-33: la version anterior llevaba hardcodeada la narrativa del
-// caso tvOS que origino la skill, y se colaba en el visor de cualquier corpus.
-const M = GRAPH.meta?.intro || {};
-// Como se llama un carril en ESTE proyecto: Capa, Hueco, Dominio, Feature...
-const GRUPO = M.grupo_label || 'Grupo';
-
-const LAYERS = (() => {
-  const m = GRAPH.meta?.layers || {};
-  const out = Object.keys(m)
-    // \d+ y no [1-9]: con un solo digito los carriles 10+ se perdian en
-    // silencio, y sus nodos quedaban sin sitio. Ver H-33.
-    .filter(k => /^layer_\d+$/.test(k) && k !== 'layer_0')
-    .sort((a, b) => +a.split('_')[1] - +b.split('_')[1])
-    .map((k, i) => {
-      const id = +k.split('_')[1];
-      // "Nombre - descripcion" -> se parte en el primer guion suelto
-      const [name, ...rest] = String(m[k]).split(/\s+-\s+/);
-      // Si el nombre ya trae su propio prefijo legible (ej. "FIND-31",
-      // "SQ-umbral"), NO anteponer "${GRUPO} ${id}" - duplicaria el
-      // identificador. El prefijo propio gana cuando existe; el numero
-      // generico de layer_N solo se usa si el nombre no trae ninguno.
-      const yaTienePrefijo = /^[A-Za-z]+-/.test(name);
-      const label = yaTienePrefijo ? name : `${GRUPO} ${id} · ${name}`;
-      return {id, name: label, sub: rest.join(' - '),
-              color: LAYER_COLORS[i % LAYER_COLORS.length]};
-    });
-  // El carril 0 siempre existe: lo transversal y lo que no se ha agrupado.
-  out.push({id:0, name: M.grupo_0_nombre || 'Vecinos e infraestructura',
-            sub: M.grupo_0_sub || 'fuera del subsistema pero lo toca (blast-radius)',
-            color:'#5d6478'});
-  return out;
-})();
-if (M.titulo) document.title = M.titulo;
-const LC = Object.fromEntries(LAYERS.map(l => [l.id, l.color]));
-
-// Tipos de falla. El campo issue se escribe a mano en curation.yaml, nodo a nodo.
-const ISSUE_COLOR = {bug:'#ff4757', muerto:'#ffa94d', duplicado:'#cc5de8'};
-const ISSUE_LABEL = {bug:'BUG', muerto:'CODIGO MUERTO', duplicado:'DUPLICADO'};
-const LANE_PAD = 60, W = 2600;   // el alto de cada carril se calcula en sizeLanes()
-
-const svg = document.getElementById('svg');
-const panel = document.getElementById('panel');
-const NS = 'http://www.w3.org/2000/svg';
-const el = (t, a = {}) => { const e = document.createElementNS(NS, t);
-  for (const k in a) e.setAttribute(k, a[k]); return e; };
-
-// ── Estado de vista ──
-const view = {x:0, y:0, k:1};
-const filters = {layers:new Set([0,1,2,3,4]), rels:new Set(['calls','imports','contains','other']),
-                 issue:false, violation:false};
-let selected = null;
-
-// ── Layout determinista: posicion = f(capa, conexiones) ──
-// Sin simulacion fisica: mismo JSON -> mismo dibujo, siempre.
-const nodes = GRAPH.nodes.map(n => ({...n}));
-const byId = Object.fromEntries(nodes.map(n => [n.id, n]));
-const edges = GRAPH.edges.filter(e => byId[e.source] && byId[e.target]);
-
-const radius = n => Math.max(3.2, Math.min(15, 3.2 + Math.sqrt(n.in_degree) * 1.75));
-
-function layout() {
-  const laneOf = Object.fromEntries(LAYERS.map((l, i) => [l.id, i]));
-  const groups = {};
-  for (const n of nodes) (groups[n.layer] ??= []).push(n);
-
-  for (const [layer, list] of Object.entries(groups)) {
-    // Orden estable: por carpeta (los hermanos salen juntos), luego impacto.
-    list.sort((a, b) => (a.source_file || '').localeCompare(b.source_file || '')
-      || b.in_degree - a.in_degree || (a.label || '').localeCompare(b.label || ''));
-
-    const lane = laneOf[layer] ?? LAYERS.length - 1;
-    const h = laneHeights[lane];
-    const yBase = laneY[lane];
-    list.forEach(n => n.r = radius(n));
-
-    // Filas necesarias para que quepan sin encimarse, dado el ancho disponible.
-    const rows = Math.max(1, Math.ceil(list.length / Math.floor((W - 180) / MIN_GAP)));
-    const cols = Math.ceil(list.length / rows);
-    const step = (W - 180) / cols;
-    const rowGap = Math.min(46, (h - 46) / Math.max(rows, 1));
-
-    list.forEach((n, i) => {
-      const col = i % cols, row = Math.floor(i / cols);
-      // Medio paso alterno por fila: evita columnas de etiquetas alineadas.
-      n.x = 100 + col * step + (row % 2) * step * .5;
-      n.y = yBase + 40 + row * rowGap + rowGap / 2;
-    });
-  }
-}
-
-// Alto de cada carril segun cuantos nodos tiene: los vecinos son 282 y
-// necesitan mas sitio que los 70 del SDK. Sin esto se apelotonan en una linea.
-const MIN_GAP = 92;          // separacion horizontal minima entre centros
-let laneHeights = [], laneY = [];
-(function sizeLanes() {
-  const count = {};
-  for (const n of nodes) count[n.layer] = (count[n.layer] || 0) + 1;
-  let y = LANE_PAD;
-  LAYERS.forEach((l, i) => {
-    const c = count[l.id] || 0;
-    const rows = Math.max(1, Math.ceil(c / Math.floor((W - 180) / MIN_GAP)));
-    laneHeights[i] = Math.max(140, 60 + rows * 46);
-    laneY[i] = y;
-    y += laneHeights[i];
+const lanesEl = document.getElementById('lanes');
+LAYERS.forEach(L=>{
+  const ns = DATA.nodes.filter(n=>n.layer===L.id).sort((a,b)=>b.out-a.out);
+  if(!ns.length) return;
+  const lane = document.createElement('div');
+  lane.className='lane'; lane.dataset.layer=L.id; lane.style.setProperty('--lc',`var(${L.c})`);
+  lane.innerHTML = `<div class="lane-h">${L.id} · ${L.name}</div><div class="lane-sub">${L.sub}</div>`;
+  const wrap = document.createElement('div'); wrap.className='nodes';
+  ns.forEach(n=>{
+    const el = document.createElement('div');
+    const isCur = !!(CUR[n.file] && CUR[n.file].what);
+    el.className='node'+(isCur?' curated':''); el.style.setProperty('--lc',`var(${L.c})`); el.dataset.id=n.id;
+    el.innerHTML=`<span class="dot" title="${isCur?'curado':'sin curar'}"></span><div class="lbl">${esc(displayLabel(n))}</div><div class="deg">in ${n.in} · out ${n.out}</div>`;
+    el.onclick=(ev)=>{ev.stopPropagation();select(n.id);};
+    wrap.appendChild(el); nodeEls[n.id]=el;
   });
-})();
-const TOTAL_H = laneY.at(-1) + laneHeights.at(-1);
-layout();
-
-// ── Render ──
-const root = el('g');
-svg.appendChild(root);
-const gLanes = el('g'), gEdges = el('g'), gNodes = el('g');
-root.append(gLanes, gEdges, gNodes);
-
-function relClass(rel) {
-  if (rel === 'calls') return 'calls';
-  if (rel === 'imports' || rel === 'imports_from' || rel === 're_exports') return 'imports';
-  if (rel === 'contains') return 'contains';
-  return 'other';
-}
-
-// Carriles — alto proporcional a cuantos nodos contienen
-LAYERS.forEach((l, i) => {
-  const y = laneY[i];
-  gLanes.appendChild(el('rect', {x:0, y, width:W, height:laneHeights[i], class:'lane-bg'}));
-  gLanes.appendChild(el('line', {x1:0, y1:y, x2:W, y2:y, class:'lane-line'}));
-  const t = el('text', {x:14, y:y + 17, class:'lane-label', fill:l.color});
-  t.textContent = l.name; gLanes.appendChild(t);
-  const s = el('text', {x:14, y:y + 29, class:'lane-sub'});
-  s.textContent = l.sub; gLanes.appendChild(s);
+  lane.appendChild(wrap); lanesEl.appendChild(lane);
 });
 
-// Curva suave: menos cruces visuales que la linea recta.
-function edgePath(a, b) {
-  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2 + (b.y - a.y) * .12;
-  return `M${a.x},${a.y} Q${mx},${my} ${b.x},${b.y}`;
-}
-
-// Edges — todos dibujados desde el arranque
-const edgeEls = edges.map(e => {
-  const a = byId[e.source], b = byId[e.target];
-  // El edge solo distingue una cosa: si viola la capa. La procedencia (AST o
-  // curado) se marca en el NODO con su anillo, no aqui.
-  const viol = e.layer_violation;
-  const p = el('path', {
-    class: 'edge',
-    stroke: viol ? 'var(--violation)' : (LC[a.layer] || '#4a5068'),
-    'stroke-width': viol ? 1.6 : (a.in_degree > 20 ? .8 : .5),
-    'stroke-opacity': viol ? .85 : .3,
-    ...(viol ? {'stroke-dasharray': '6 3'} : {}),
-    d: edgePath(a, b),
+const svg = document.getElementById('edges');
+const SVGNS='http://www.w3.org/2000/svg';
+function drawEdges(){
+  svg.innerHTML='';
+  const main = document.querySelector('main');
+  const ox = main.scrollLeft, oy = main.scrollTop;
+  const base = main.getBoundingClientRect();
+  const box = el => { const r=el.getBoundingClientRect(); return {x:r.left-base.left+ox+r.width/2, top:r.top-base.top+oy, bot:r.top-base.top+oy+r.height}; };
+  DATA.edges.forEach(e=>{
+    const a=nodeEls[e.s], b=nodeEls[e.t]; if(!a||!b) return;
+    const p1=box(a), p2=box(b);
+    let y1, y2;
+    if(p2.top >= p1.bot){ y1=p1.bot; y2=p2.top; }
+    else if(p1.top >= p2.bot){ y1=p1.top; y2=p2.bot; }
+    else { y1=p1.bot; y2=p2.bot; }
+    const dy=Math.abs(y2-y1);
+    const c=Math.min(Math.max(dy*0.4,24),110);
+    const cy1 = y1<=y2 ? y1+c : y1-c;
+    const cy2 = y2>=y1 ? y2-c : y2+c;
+    const path=document.createElementNS(SVGNS,'path');
+    path.setAttribute('d',`M ${p1.x} ${y1} C ${p1.x} ${cy1}, ${p2.x} ${cy2}, ${p2.x} ${y2}`);
+    path.dataset.s=e.s; path.dataset.t=e.t;
+    svg.appendChild(path);
   });
-  p._e = e; gEdges.appendChild(p);
-  return p;
-});
-
-// Indice nodo -> sus edges, para redibujar solo lo que toca al arrastrar.
-const edgesOf = {};
-edgeEls.forEach(p => {
-  (edgesOf[p._e.source] ??= []).push(p);
-  (edgesOf[p._e.target] ??= []).push(p);
-});
-
-// Nodos
-const nodeEls = nodes.map(n => {
-  const g = el('g', {class:'node' + (n.r > 8 ? ' big' : '') + (n.issue ? ' issue' : '')});
-  // Halo de falla: aro exterior relleno que ilumina el nodo. Va DEBAJO de todo
-  // para que no tape ni el anillo de curado ni el circulo.
-  let halo = null;
-  if (n.issue) {
-    halo = el('circle', {cx:n.x, cy:n.y, r:n.r + 7, class:'halo',
-      fill:ISSUE_COLOR[n.issue] || ISSUE_COLOR.bug, 'fill-opacity':.22, stroke:'none'});
-    g.appendChild(halo);
-  }
-  // Anillo de rayas: marca que el nodo tiene descripcion escrita a mano.
-  // Va POR FUERA del circulo, sin tocar su relleno ni su borde.
-  let ring = null;
-  if (n.what) {
-    ring = el('circle', {cx:n.x, cy:n.y, r:n.r + 3.5, class:'ring',
-      fill:'none', stroke:'rgba(255,255,255,.55)', 'stroke-width':1,
-      'stroke-dasharray':'2 2.5'});
-    g.appendChild(ring);
-  }
-  const c = el('circle', {cx:n.x, cy:n.y, r:n.r,
-    fill: LC[n.layer] || LC[0],
-    'fill-opacity': n.is_core ? .92 : .4,
-    stroke: n.protected ? 'var(--warn)' : (n.is_core ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.12)'),
-    'stroke-width': n.protected ? 2 : 1.2});
-  g.appendChild(c);
-  // Etiqueta fija solo en los nodos que importan: con >=8 consumidores hay ~90,
-  // no 951, y dejan de encimarse. El resto la enseña al pasar el raton.
-  let t = null;
-  const named = n.in_degree >= 8 || (n.is_core && n.what);
-  t = el('text', {x:n.x, y:n.y - n.r - 4, class: named ? '' : 'onhover'});
-  t.textContent = (n.label || '').replace(/\(\)$/, '').slice(0, 26);
-  g.appendChild(t);
-  g._n = n; g._c = c; g._t = t; g._ring = ring; g._halo = halo;
-  n._g = g;
-  g.addEventListener('mousedown', ev => startNodeDrag(ev, n));
-  // El click del nodo no debe llegar al SVG: alli deselecciona.
-  g.addEventListener('click', ev => ev.stopPropagation());
-  gNodes.appendChild(g);
-  return g;
-});
-
-// ── Arrastrar nodos ──
-// El layout es determinista (sin fisica), asi que mover un nodo es solo
-// reposicionarlo y redibujar sus edges. Nada mas se altera.
-let nodeDrag = null;
-
-function moveNode(n, x, y) {
-  n.x = x; n.y = y;
-  n._g._c.setAttribute('cx', x);
-  n._g._c.setAttribute('cy', y);
-  if (n._g._ring) { n._g._ring.setAttribute('cx', x); n._g._ring.setAttribute('cy', y); }
-  if (n._g._halo) { n._g._halo.setAttribute('cx', x); n._g._halo.setAttribute('cy', y); }
-  if (n._g._t) { n._g._t.setAttribute('x', x); n._g._t.setAttribute('y', y - n.r - 4); }
-  (edgesOf[n.id] || []).forEach(p =>
-    p.setAttribute('d', edgePath(byId[p._e.source], byId[p._e.target])));
+  if(curSel) paintPaths(curSel);
 }
+window.addEventListener('load',drawEdges);
+window.addEventListener('resize',()=>{clearTimeout(window._rt);window._rt=setTimeout(drawEdges,150);});
+document.querySelector('main').addEventListener('scroll',()=>{clearTimeout(window._st);window._st=setTimeout(drawEdges,50);});
 
-function startNodeDrag(ev, n) {
-  ev.stopPropagation();          // no arrastrar el lienzo a la vez
-  const pt = toGraph(ev);
-  nodeDrag = {n, dx: pt.x - n.x, dy: pt.y - n.y, moved: false};
-  n._g.classList.add('grabbing');
-}
-
-// Pantalla -> coordenadas del grafo (deshace zoom y pan).
-function toGraph(ev) {
-  const r = svg.getBoundingClientRect();
-  return {x: (ev.clientX - r.left - view.x) / view.k,
-          y: (ev.clientY - r.top - view.y) / view.k};
-}
-
-// ── Filtros ──
-function visible(n) {
-  if (!filters.layers.has(n.layer)) return false;
-  if (filters.issue && !n.issue) return false;
-  if (filters.violation) return violNodes.has(n.id);
-  return true;
-}
-const violNodes = new Set();
-edges.forEach(e => { if (e.layer_violation) { violNodes.add(e.source); violNodes.add(e.target); } });
-
-function apply() {
-  const vis = new Set(nodes.filter(visible).map(n => n.id));
-  nodeEls.forEach(g => g.classList.toggle('dim', !vis.has(g._n.id)));
-  edgeEls.forEach(p => {
-    const e = p._e;
-    const ok = vis.has(e.source) && vis.has(e.target)
-      && filters.rels.has(relClass(e.relation))
-      && (!filters.violation || e.layer_violation);
-    p.style.display = ok ? '' : 'none';
-  });
-  if (selected) highlight(selected);
-}
-
-function highlight(n) {
-  const near = new Set([n.id]);
-  edges.forEach(e => { if (e.source === n.id) near.add(e.target);
-                       if (e.target === n.id) near.add(e.source); });
-  nodeEls.forEach(g => {
-    g.classList.toggle('hl', g._n.id === n.id);
-    g.classList.toggle('dim', !near.has(g._n.id) || !visible(g._n));
-  });
-  edgeEls.forEach(p => {
-    const on = p._e.source === n.id || p._e.target === n.id;
-    if (p.style.display === 'none') return;
-    p.setAttribute('stroke-opacity', on ? .95 : .05);
-    p.setAttribute('stroke-width', on ? 2 : .5);
+let curSel=null;
+function paintPaths(id){
+  const hc=layerColor(byId[id].layer);
+  document.documentElement.style.setProperty('--hc',hc);
+  svg.querySelectorAll('path').forEach(p=>{
+    p.classList.remove('hi-out','hi-in','dim');
+    if(p.dataset.s===id) p.classList.add('hi-out');
+    else if(p.dataset.t===id) p.classList.add('hi-in');
+    else p.classList.add('dim');
   });
 }
+// Ejemplos generados desde los datos (top-3 por out) — nunca hardcodeados.
+function emptyPanelHTML(){
+  const top = [...DATA.nodes].sort((a,b)=>b.out-a.out).slice(0,3)
+    .map(n=>`<b>${esc(displayLabel(n))}</b> (out ${n.out})`).join(', ');
+  const hint = top ? `<br><br>Empieza por los de mayor <b>out</b>: ${top}.` : '';
+  return `<div class="p-empty">Selecciona un nodo para ver su rol y resaltar sus conexiones.${hint}</div>`;
+}
+function clearSel(){
+  curSel=null;
+  Object.values(nodeEls).forEach(el=>el.classList.remove('sel','neigh-out','neigh-in','faded'));
+  svg.querySelectorAll('path').forEach(p=>p.classList.remove('hi-out','hi-in','dim'));
+  document.getElementById('panel').innerHTML=emptyPanelHTML();
+}
+document.querySelector('main').addEventListener('click',clearSel);
 
-// ── Panel de detalle ──
-const esc = s => String(s ?? '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
-
-// Estado inicial: el contexto sin el cual ningun nodo tiene sentido.
-// El contexto sin el cual ningun nodo tiene sentido. Es el texto de MAYOR
-// densidad semantica del visor - lo que convierte una lista de tarjetas en algo
-// que se entiende de un vistazo - y por eso lo escribe el humano en el bloque
-// meta: de curation.yaml, no la plantilla. Si no esta escrito, el visor lo dice
-// en vez de inventarlo (misma regla que "no derivar la descripcion del nombre").
-const INTRO = (() => {
-  const bloque = (label, txt, cls) => txt
-    ? `<div class="p-label">${esc(label)}</div><div class="${cls}" style="margin-bottom:14px">${esc(txt)}</div>`
-    : '';
-
-  // Los carriles se listan solos desde meta.layers: son datos, no prosa.
-  const carriles = LAYERS.filter(l => l.id !== 0).map(l =>
-    `<b style="color:${l.color}">${esc(l.name)}</b>${l.sub ? ' — ' + esc(l.sub) : ''}`
-  ).join('<br>');
-
-  if (!M.contexto) {
-    return `<div class="p-intro"><b>Este grafo no tiene introduccion escrita</b>
-      Anade al bloque <code>meta:</code> de curation.yaml los campos
-      <code>titulo</code>, <code>contexto</code>, <code>problema</code> y
-      <code>sintomas</code>. Es el texto que hace que los ${GRAPH.nodes.length}
-      nodos se entiendan de un vistazo, y no se puede deducir del codigo.</div>
-      <div class="p-label">${esc(GRUPO)}s</div>
-      <div class="p-layer-note" style="line-height:1.75">${carriles}</div>`;
-  }
-
-  return `
-    <div class="p-intro">
-      <b>${esc(M.contexto_label || 'Por que existe todo esto')}</b>
-      ${esc(M.contexto)}
-    </div>
-    ${bloque(M.problema_label || 'El problema', M.problema, 'p-why')}
-    <div class="p-label">${esc(M.grupos_label || GRUPO + 's')}</div>
-    <div class="p-layer-note" style="line-height:1.75;margin-bottom:14px">${carriles}</div>
-    ${bloque(M.sintomas_label || 'Como se nota', M.sintomas, 'p-ux')}
-    <div style="margin-top:16px;font-size:11px;color:var(--text3);line-height:1.6">
-      ${esc(M.pie || 'Click en cualquier nodo para ver que hace y por que existe.')}
-    </div>`;
-})();
-
-function showIntro() {
-  panel.className = 'panel';
-  panel.innerHTML = INTRO;
+function select(id){
+  curSel=id;
+  const n=byId[id], hc=layerColor(n.layer);
+  const outs=outMap[id]||[], ins=inMap[id]||[];
+  const neighOut=new Set(outs.map(e=>e.t)), neighIn=new Set(ins.map(e=>e.s));
+  Object.entries(nodeEls).forEach(([nid,el])=>{
+    el.classList.remove('sel','neigh-out','neigh-in','faded');
+    el.style.setProperty('--hc',hc);
+    if(nid===id) el.classList.add('sel');
+    else if(neighOut.has(nid)) el.classList.add('neigh-out');
+    else if(neighIn.has(nid)) el.classList.add('neigh-in');
+    else el.classList.add('faded');
+  });
+  paintPaths(id);
+  renderPanel(n,outs,ins);
 }
 
-function select(n) {
-  selected = n;
-  highlight(n);
-  const L = LAYERS.find(l => l.id === n.layer) || LAYERS[4];
-  const list = (arr, cls) => arr.length
-    ? `<ul class="p-list">${arr.map(x => `<li data-goto="${esc(x)}">${esc(x)}</li>`).join('')}</ul>`
-    : `<div style="color:var(--text3);font-size:11px">—</div>`;
-
-  panel.className = 'panel';
-  panel.innerHTML = `
-    <div class="p-title">${esc(n.label)}</div>
-    <div class="p-file">${esc(n.source_file)}${n.source_location ? ':' + esc(n.source_location) : ''}</div>
-    <div class="p-badges">
-      <span class="badge b-${n.impact}">${n.impact}</span>
-      <span class="badge b-layer" style="background:${L.color}">${L.id ? 'CAPA ' + L.id : 'VECINO'}</span>
-      ${n.protected ? `<span class="badge b-prot">⚠ PROTEGIDO ${esc(n.protected)}</span>` : ''}
-      ${n.issue ? `<span class="badge" style="background:${ISSUE_COLOR[n.issue]};color:#fff">
-        ⚠ ${ISSUE_LABEL[n.issue] || n.issue.toUpperCase()}</span>` : ''}
-    </div>
-    ${n.what ? `<div class="p-label">Que hace</div><div class="p-what">${esc(n.what)}</div>` : ''}
-    ${n.why ? `<div class="p-label">Por que existe</div><div class="p-why">${esc(n.why)}</div>` : ''}
-    ${n.ux ? `<div class="p-label">Que ve el usuario</div><div class="p-ux">${esc(n.ux)}</div>` : ''}
-    ${n.when ? `<div class="p-label">Cuando se ejecuta</div><div class="p-when">${esc(n.when)}</div>` : ''}
-    ${n.if_broken ? `<div class="p-label">Si se rompe</div><div class="p-broken">${esc(n.if_broken)}</div>` : ''}
-    ${!n.what && n.module_what ? `
-      <div class="p-label">Del modulo donde vive</div>
-      <div class="p-module">
-        <span class="p-module-file">${esc(n.module_file)}</span>
-        ${esc(n.module_what)}
-      </div>` : ''}
-    ${!n.what && !n.module_what ? `<div class="p-layer-note">${
-      n.is_core ? 'Forma parte del subsistema' : 'Es un vecino que lo toca'}${
-      L.id ? ' — ' + esc(L.name.toLowerCase()) : ''}. Aun sin descripcion escrita a mano;
-      lo que se ve aqui sale del AST.</div>` : ''}
-    <div class="p-stats">
-      <div class="stat"><b style="color:${n.in_degree >= 20 ? 'var(--l1)' : 'var(--text)'}">${n.in_degree}</b><span>lo usan</span></div>
-      <div class="stat"><b>${n.out_degree}</b><span>usa</span></div>
-    </div>
-    ${n.gotchas?.length ? `<div class="p-label">Ojo con esto</div>${
-      n.gotchas.map(g => `<div class="p-gotcha">${esc(g)}</div>`).join('')}` : ''}
-    ${n.flows?.length ? `<div class="p-label">Flujos</div>${
-      n.flows.map(f => `<span class="p-flow">${esc(f)}</span>`).join('')}` : ''}
-    ${n.cases?.length ? `<div class="p-label">Casos</div>${
-      n.cases.map(c => `<span class="p-case">${esc(c)}</span>`).join('')}` : ''}
-    <div class="p-label">Quien lo usa (${n.consumers.length})</div>${list(n.consumers)}
-    <div class="p-label">De que depende (${n.dependencies.length})</div>${list(n.dependencies)}
-  `;
-  panel.querySelectorAll('[data-goto]').forEach(li => li.addEventListener('click', () => {
-    const t = li.dataset.goto.replace(/\(\)$/, '');
-    const hit = nodes.find(x => (x.label || '').replace(/\(\)$/, '') === t);
-    if (hit) { select(hit); center(hit); }
-  }));
+function renderPanel(n,outs,ins){
+  const cur=CUR[n.file]||{};
+  const L=LAYERS.find(l=>l.id===n.layer)||LAYERS[0];
+  let h=`<span class="clr" onclick="clearSel()">✕ limpiar</span><span class="badge" style="--lc:var(${L.c})">${L.id} · ${L.name}</span>`;
+  h+=`<div class="p-file" style="margin-top:10px">${esc(n.file)}</div>`;
+  h+=`<div class="p-deg"><span><b>${n.in}</b> lo usan</span><span><b>${n.out}</b> usa</span></div>`;
+  if(cur.what){ h+=`<div class="p-lbl">Que hace</div><div class="p-val">${esc(cur.what)}</div>`; }
+  if(cur.why){ h+=`<div class="p-lbl">Por que</div><div class="p-val">${esc(cur.why)}</div>`; }
+  if(cur.gotcha){ h+=`<div class="warn">${esc(cur.gotcha)}</div>`; }
+  if(!cur.what){ h+=`<div class="warn">Nodo sin curar todavia. Su descripcion (que hace / por que) se escribe leyendo el archivo.</div>`; }
+  if(outs.length){ h+=`<div class="p-lbl">Usa (${outs.length})</div>`+outs.map(e=>{const o=byId[e.t];return o?`<div class="rel" onclick="select('${o.id}')"><span class="arrow">→</span> ${esc(displayLabel(o))}<span class="rt">${e.r}</span></div>`:'';}).join(''); }
+  if(ins.length){ h+=`<div class="p-lbl">Lo usan (${ins.length})</div>`+ins.map(e=>{const o=byId[e.s];return o?`<div class="rel" onclick="select('${o.id}')"><span class="arrow">←</span> ${esc(displayLabel(o))}<span class="rt">${e.r}</span></div>`:'';}).join(''); }
+  document.getElementById('panel').innerHTML=h;
 }
 
-// ── Zoom / pan ──
-function tf() { root.setAttribute('transform', `translate(${view.x},${view.y}) scale(${view.k})`); }
-function center(n) {
-  const r = svg.getBoundingClientRect();
-  view.k = Math.max(view.k, 1.1);
-  view.x = r.width / 2 - n.x * view.k;
-  view.y = r.height / 2 - n.y * view.k;
-  tf();
+// ── Buscador ──────────────────────────────────────────────────
+const isCurated = n => !!(CUR[n.file] && CUR[n.file].what);
+const totalCurated = DATA.nodes.filter(isCurated).length;
+const searchEl = document.getElementById('search');
+const resultsEl = document.getElementById('results');
+const countEl = document.getElementById('searchcount');
+const onlyUncEl = document.getElementById('onlyuncurated');
+
+function updateCount(){
+  countEl.textContent = `${totalCurated}/${DATA.nodes.length} curados`;
 }
-svg.addEventListener('wheel', e => {
-  e.preventDefault();
-  const r = svg.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
-  const k = Math.max(.15, Math.min(4, view.k * (e.deltaY < 0 ? 1.12 : .89)));
-  view.x = mx - (mx - view.x) * (k / view.k);
-  view.y = my - (my - view.y) * (k / view.k);
-  view.k = k; tf();
-}, {passive:false});
-let drag = null, justDragged = false;
-svg.addEventListener('mousedown', e => { drag = {x:e.clientX - view.x, y:e.clientY - view.y}; svg.classList.add('drag'); });
-addEventListener('mousemove', e => {
-  if (nodeDrag) {                       // mover nodo tiene prioridad sobre mover lienzo
-    const pt = toGraph(e);
-    nodeDrag.moved = true;
-    moveNode(nodeDrag.n, pt.x - nodeDrag.dx, pt.y - nodeDrag.dy);
-    // moveNode solo reescribe la geometria (atributo d), no los estilos:
-    // el resaltado del nodo seleccionado sobrevive al arrastre.
-    return;
-  }
-  if (!drag) return;
-  justDragged = true;
-  view.x = e.clientX - drag.x; view.y = e.clientY - drag.y; tf();
-});
-addEventListener('mouseup', () => {
-  if (nodeDrag) {
-    nodeDrag.n._g.classList.remove('grabbing');
-    // Sin movimiento = click: abrir el detalle (y mantener el resaltado).
-    // Con movimiento = solo recolocar, sin tocar la seleccion.
-    if (nodeDrag.moved) moved.add(nodeDrag.n.id);
-    else select(nodeDrag.n);
-    nodeDrag = null;
-  }
-  drag = null; svg.classList.remove('drag');
-});
-
-// Nodos recolocados a mano: se respetan hasta que se pulse "Reordenar".
-const moved = new Set();
-svg.addEventListener('click', () => {
-  // Tras arrastrar (nodo o lienzo) el navegador emite un click: no deseleccionar.
-  if (justDragged) { justDragged = false; return; }
-  selected = null; showIntro();
-  edgeEls.forEach(p => { const e = p._e;
-    p.setAttribute('stroke-opacity', e.layer_violation ? .85 : .3);
-    p.setAttribute('stroke-width', e.layer_violation ? 1.6 : (byId[e.source].in_degree > 20 ? .8 : .5)); });
-  apply();
-});
-
-// ── Busqueda: nombre, archivo, flujo, caso ──
-const q = document.getElementById('q'), res = document.getElementById('res');
-q.addEventListener('input', () => {
-  const s = q.value.trim().toLowerCase();
-  if (!s) { res.classList.remove('on'); return; }
-  const hits = nodes.filter(n =>
-    (n.label || '').toLowerCase().includes(s) ||
-    (n.source_file || '').toLowerCase().includes(s) ||
-    (n.flows || []).some(f => f.toLowerCase().includes(s)) ||
-    (n.cases || []).some(c => c.toLowerCase().includes(s))
-  ).sort((a, b) => b.in_degree - a.in_degree).slice(0, 30);
-  res.innerHTML = hits.length
-    ? hits.map(n => `<div class="r-item" data-id="${n.id}">${esc(n.label)}
-        <div class="rf">${esc(n.source_file)} · ${n.impact}${n.layer ? ' · capa ' + n.layer : ''}</div></div>`).join('')
-    : '<div class="r-item" style="color:var(--text3);cursor:default">Sin resultados</div>';
-  res.classList.add('on');
-  res.querySelectorAll('[data-id]').forEach(d => d.addEventListener('click', () => {
-    const n = byId[d.dataset.id]; select(n); center(n); res.classList.remove('on'); q.value = '';
-  }));
-});
-q.addEventListener('keydown', e => { if (e.key === 'Escape') { res.classList.remove('on'); q.blur(); } });
-document.addEventListener('click', e => { if (!e.target.closest('.search')) res.classList.remove('on'); });
-
-// ── Chips ──
-document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
-  c.classList.toggle('on');
-  const on = c.classList.contains('on');
-  if (c.dataset.layer !== undefined) {
-    const l = +c.dataset.layer;
-    on ? filters.layers.add(l) : filters.layers.delete(l);
-  } else if (c.dataset.rel) {
-    on ? filters.rels.add(c.dataset.rel) : filters.rels.delete(c.dataset.rel);
-  } else if (c.dataset.flag) {
-    filters[c.dataset.flag] = on;
-  }
-  apply();
-}));
-// Recalcula el layout determinista y devuelve todo a su sitio.
-// layout() ya escribe n.x/n.y; moveNode las reaplica al SVG y redibuja los edges.
-function relayout() {
-  layout();
-  nodes.forEach(n => moveNode(n, n.x, n.y));
-  moved.clear();
+function jumpTo(id){
+  const el = nodeEls[id]; if(!el) return;
+  Object.values(nodeEls).forEach(e=>e.classList.remove('hit'));
+  el.classList.add('hit');
+  el.scrollIntoView({behavior:'smooth', block:'center'});
+  select(id);
 }
-document.getElementById('relayout').addEventListener('click', relayout);
+function runSearch(){
+  const q = searchEl.value.trim().toLowerCase();
+  const onlyUnc = onlyUncEl.checked;
+  resultsEl.innerHTML='';
+  if(!q && !onlyUnc){ return; }
+  let matches = DATA.nodes.filter(n=>{
+    const hit = !q || n.label.toLowerCase().includes(q) || n.file.toLowerCase().includes(q);
+    const unc = !onlyUnc || !isCurated(n);
+    return hit && unc;
+  }).sort((a,b)=>b.out-a.out).slice(0,40);
+  matches.forEach(n=>{
+    const chip=document.createElement('div'); chip.className='rchip';
+    chip.innerHTML=`<span class="rlayer" style="background:${layerColor(n.layer)}"></span>${esc(displayLabel(n))}<span class="dot" style="position:static;width:6px;height:6px;background:${isCurated(n)?'#20c997':'#3a4152'}"></span><span class="rfile">${esc(n.file.replace(/^(core|components)\//,''))}</span>`;
+    chip.onclick=()=>jumpTo(n.id);
+    resultsEl.appendChild(chip);
+  });
+  if(!matches.length){ resultsEl.innerHTML='<div class="rfile" style="padding:4px">Sin resultados</div>'; }
+}
+searchEl.addEventListener('input', runSearch);
+onlyUncEl.addEventListener('change', runSearch);
+updateCount();
 
-document.getElementById('reset').addEventListener('click', () => {
-  relayout();
-  document.querySelectorAll('.chip[data-layer],.chip[data-rel]').forEach(c => c.classList.add('on'));
-  document.querySelectorAll('.chip[data-flag]').forEach(c => c.classList.remove('on'));
-  filters.layers = new Set([0,1,2,3,4]);
-  filters.rels = new Set(['calls','imports','contains','other']);
-  filters.issue = filters.violation = false;
-  selected = null; showIntro();
-  view.x = view.y = 0; view.k = 1; tf(); apply();
-});
+// ── Filtros de capa y tipo de arista ──────────────────────────
+const activeLayers = new Set(LAYERS.map(l=>l.id));
+const REL_TYPES = [...new Set(DATA.edges.map(e=>e.r))];
+const activeRels = new Set(REL_TYPES);
 
-// ── Init ──
-const m = GRAPH.meta || {};
-const issueCount = nodes.filter(n => n.issue).length;
-document.getElementById('meta').innerHTML =
-  `${nodes.length} nodos · ${edges.length} edges · ${
-   edges.filter(e => e.layer_violation).length} violaciones` +
-  (issueCount ? ` · <span style="color:#ff8b95">${issueCount} con fallas</span>` : '');
-
-// Encuadre inicial: que se vea todo el grafo de golpe.
-(function fit() {
-  const r = svg.getBoundingClientRect();
-  view.k = Math.min(r.width / (W + 100), r.height / (TOTAL_H + 40), 1);
-  view.x = (r.width - W * view.k) / 2;
-  view.y = 10;
-  tf();
-})();
-// La leyenda se rellena aqui y no en el HTML: decia "capa" fijo y mostraba la
-// fila de violaciones aunque el proyecto no tuviera regla de dependencia. Solo
-// se enseña lo que este grafo usa de verdad. Ver H-33.
-(() => {
-  const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
-  set('lg-eje', M.leyenda_eje || GRUPO.toLowerCase());
-  set('lg-tam', M.leyenda_tamano || 'impacto (quien lo usa)');
-
-  // Violaciones: la fila solo aparece si hay alguna de verdad.
-  if (GRAPH.edges.some(e => e.layer_violation)) {
-    const el = document.getElementById('lg-viol');
-    if (el) el.hidden = false;
-  }
-
-  // Fallas: se listan solo los tipos que este grafo tiene marcados.
-  const tipos = [...new Set(GRAPH.nodes.map(n => n.issue).filter(Boolean))]
-    .map(t => (ISSUE_LABEL[t] || t).toLowerCase());
-  if (tipos.length) {
-    const el = document.getElementById('lg-issue');
-    if (el) el.hidden = false;
-    set('lg-issue-txt', 'Falla (' + tipos.join(' · ') + ')');
-  }
-})();
-
-showIntro();
-apply();
+function buildFilterChips(){
+  const lc = document.getElementById('layerchips');
+  LAYERS.forEach(L=>{
+    if(!DATA.nodes.some(n=>n.layer===L.id)) return;
+    const c=document.createElement('span'); c.className='fchip on'; c.style.setProperty('--fc',`var(${L.c})`);
+    c.innerHTML=`<span class="fdot"></span>${L.id}·${L.name}`;
+    c.onclick=()=>{ c.classList.toggle('on'); c.classList.contains('on')?activeLayers.add(L.id):activeLayers.delete(L.id); applyFilters(); };
+    lc.appendChild(c);
+  });
+  const rc = document.getElementById('relchips');
+  REL_TYPES.forEach(r=>{
+    const c=document.createElement('span'); c.className='fchip on'; c.style.setProperty('--fc','var(--l1)');
+    c.textContent=r;
+    c.onclick=()=>{ c.classList.toggle('on'); c.classList.contains('on')?activeRels.add(r):activeRels.delete(r); applyFilters(); };
+    rc.appendChild(c);
+  });
+}
+function applyFilters(){
+  // nodos: ocultar los de capas apagadas
+  Object.entries(nodeEls).forEach(([id,el])=>{
+    el.classList.toggle('hidden', !activeLayers.has(byId[id].layer));
+  });
+  // carriles: ocultar el carril entero si su capa esta apagada
+  document.querySelectorAll('.lane').forEach(lane=>{
+    const lid = Number(lane.dataset.layer);
+    lane.classList.toggle('hidden', !activeLayers.has(lid));
+  });
+  // aristas: ocultar las de tipo apagado o que tocan un nodo oculto
+  svg.querySelectorAll('path').forEach(p=>{
+    const e = DATA.edges.find(x=>x.s===p.dataset.s && x.t===p.dataset.t);
+    const relOff = e && !activeRels.has(e.r);
+    const nodeOff = !activeLayers.has(byId[p.dataset.s]?.layer) || !activeLayers.has(byId[p.dataset.t]?.layer);
+    p.style.display = (relOff || nodeOff) ? 'none' : '';
+  });
+  drawEdges();
+}
+document.getElementById('resetfilters').onclick=()=>{
+  LAYERS.forEach(l=>activeLayers.add(l.id)); REL_TYPES.forEach(r=>activeRels.add(r));
+  document.querySelectorAll('#layerchips .fchip, #relchips .fchip').forEach(c=>c.classList.add('on'));
+  applyFilters();
+};
+buildFilterChips();
+// Panel inicial con los ejemplos top-3 generados desde los datos.
+document.getElementById('panel').innerHTML = emptyPanelHTML();
 </script>
 </body>
 </html>
